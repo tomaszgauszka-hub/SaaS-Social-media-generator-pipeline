@@ -61,6 +61,8 @@ export const OverlayView: React.FC<{ plan: RenderPlan; beat: ResolvedBeat; overl
       return <Cursor {...props} overlay={o} />;
     case "timer":
       return <Timer {...props} overlay={o} />;
+    case "icon_chip":
+      return <IconChip {...props} overlay={o} />;
     case "measure":
       return <Measure {...props} overlay={o} />;
     case "arrow":
@@ -373,6 +375,9 @@ const Counter: React.FC<Props<"counter">> = ({ plan, beat, overlay: o, ms }) => 
     delayMs: 0,
   };
   const max = o.max ?? Math.max(o.to, 1);
+  // after the count lands the number keeps breathing (a static hold reads as a frozen frame)
+  const settled = clamp01((local - o.durationMs) / 300);
+  const breathe = 1 + settled * 0.022 * Math.sin(((local - o.durationMs) / 900) * Math.PI * 2);
   if (o.style === "gauge" && geo.dial) {
     const { cx, cy, r } = geo.dial;
     const sweep = 240;
@@ -425,20 +430,29 @@ const Counter: React.FC<Props<"counter">> = ({ plan, beat, overlay: o, ms }) => 
           <circle
             cx={cx + R * Math.cos(endA)}
             cy={cy + R * Math.sin(endA)}
-            r={40}
+            r={40 + settled * 14 * (0.5 + 0.5 * Math.sin((local / 500) * Math.PI))}
             fill={p.accent}
             opacity={0.25}
           />
         </Svg>
-        <TextView plan={plan} text={shown} ms={local} beatMs={beat.durationMs} />
-        {unitText ? (
-          <TextView
-            plan={plan}
-            text={{ ...unitText, animation: "none", delayMs: 0 }}
-            ms={local}
-            beatMs={beat.durationMs}
-          />
-        ) : null}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            transform: `scale(${breathe.toFixed(4)})`,
+            transformOrigin: `${cx}px ${cy}px`,
+          }}
+        >
+          <TextView plan={plan} text={shown} ms={local} beatMs={beat.durationMs} />
+          {unitText ? (
+            <TextView
+              plan={plan}
+              text={{ ...unitText, animation: "none", delayMs: 0 }}
+              ms={local}
+              beatMs={beat.durationMs}
+            />
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -466,8 +480,17 @@ const Counter: React.FC<Props<"counter">> = ({ plan, beat, overlay: o, ms }) => 
   }
   return (
     <div style={{ opacity: appear }}>
-      <TextView plan={plan} text={shown} ms={local} beatMs={beat.durationMs} />
-      {unit ? <TextView plan={plan} text={unit} ms={local - 200} beatMs={beat.durationMs} /> : null}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          transform: `scale(${breathe.toFixed(4)})`,
+          transformOrigin: `${o.box.x}px ${o.box.y + o.box.h / 2}px`,
+        }}
+      >
+        <TextView plan={plan} text={shown} ms={local} beatMs={beat.durationMs} />
+        {unit ? <TextView plan={plan} text={unit} ms={local - 200} beatMs={beat.durationMs} /> : null}
+      </div>
       {o.style === "bar" ? (
         <div
           style={{
@@ -784,7 +807,7 @@ const Badge: React.FC<Props<"badge">> = ({ plan, beat, overlay: o, ms }) => {
                 : o.tone === "surface"
                   ? "surfaceInk"
                   : o.tone === "dark"
-                    ? "ink"
+                    ? "onMedia"
                     : t.color,
           }}
           ms={local}
@@ -1117,6 +1140,102 @@ const Timer: React.FC<Props<"timer">> = ({ plan, beat, overlay: o, ms }) => {
           ms={local}
           beatMs={beat.durationMs}
         />
+      ) : null}
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ icon chips -------------------- */
+
+const ICON_PATHS: Record<string, string> = {
+  crystal: "M12 2 L21 7 L21 17 L12 22 L3 17 L3 7 Z M12 2 L12 22 M3 7 L21 17 M21 7 L3 17",
+  layers: "M12 3 L22 8 L12 13 L2 8 Z M2 12 L12 17 L22 12 M2 16 L12 21 L22 16",
+  sun: "M12 7 a5 5 0 1 0 0.01 0 M12 1 v3 M12 20 v3 M1 12 h3 M20 12 h3 M4.2 4.2 l2.1 2.1 M17.7 17.7 l2.1 2.1 M4.2 19.8 l2.1 -2.1 M17.7 6.3 l2.1 -2.1",
+  drop: "M12 2 C12 2 5 10 5 15 a7 7 0 0 0 14 0 C19 10 12 2 12 2 Z",
+  leaf: "M4 20 C4 9 11 4 21 3 C20 13 15 20 4 20 Z M4 20 L14 10",
+  shield: "M12 2 L20 5 V11 C20 16.5 16.5 20.5 12 22 C7.5 20.5 4 16.5 4 11 V5 Z M8.5 12 l2.5 2.5 l5 -5",
+  sparkle: "M12 2 L14 10 L22 12 L14 14 L12 22 L10 14 L2 12 L10 10 Z",
+  feather: "M20 4 C12 4 6 10 6 18 L4 20 M6 18 C14 18 20 12 20 4 M9 15 L15 9",
+  bag: "M5 8 H19 L18 21 H6 Z M9 8 V6 a3 3 0 0 1 6 0 V8",
+  clock: "M12 3 a9 9 0 1 0 0.01 0 M12 7 V12 L15 14",
+  bolt: "M13 2 L4 14 H11 L10 22 L20 9 H13 Z",
+  check: "M4 12 L10 18 L20 6",
+};
+
+const IconChip: React.FC<Props<"icon_chip">> = ({ plan, beat, overlay: o, ms }) => {
+  const p = plan.style.palette;
+  const local = ms - o.delayMs;
+  const s = spring(local, 0, { stiffness: 210, damping: 18 });
+  const t = text(beat, `${o.id}:${o.textSlot}`);
+  const lightSurface = !isDark(p.surface);
+  const bg =
+    o.tone === "accent"
+      ? p.accent
+      : o.tone === "dark"
+        ? "rgba(12,12,14,0.72)"
+        : rgba(p.surface, lightSurface ? 0.9 : 0.86);
+  const iconBg = o.tone === "accent" ? rgba(p.accentInk, 0.16) : rgba(p.accent, 0.14);
+  const iconColor = o.tone === "accent" ? p.accentInk : o.tone === "dark" ? "#FFFFFF" : p.accent;
+  const r = o.box.h / 2;
+  const iconSize = o.box.h * 0.46;
+  // width follows the measured label so the pill hugs its text
+  const w = t ? Math.min(o.box.w, o.box.h + 4 + t.width + 34) : o.box.w;
+  const reveal = clamp01(local / 380);
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: o.box.x,
+        top: o.box.y,
+        width: w,
+        height: o.box.h,
+        borderRadius: r,
+        background: bg,
+        boxShadow: "0 14px 34px rgba(0,0,0,0.22)",
+        backdropFilter: o.tone === "light" ? "blur(6px)" : undefined,
+        transform: `translateY(${((1 - s) * 26).toFixed(2)}px) scale(${(0.86 + 0.14 * s).toFixed(4)})`,
+        transformOrigin: `${r}px 50%`,
+        opacity: clamp01(local / 160),
+        clipPath: `inset(0 ${((1 - reveal) * 100 * (1 - o.box.h / w)).toFixed(2)}% 0 0 round ${r}px)`,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          left: o.box.h * 0.12,
+          top: o.box.h * 0.12,
+          width: o.box.h * 0.76,
+          height: o.box.h * 0.76,
+          borderRadius: "50%",
+          background: iconBg,
+        }}
+      />
+      <svg
+        width={iconSize}
+        height={iconSize}
+        viewBox="0 0 24 24"
+        style={{ position: "absolute", left: (o.box.h - iconSize) / 2, top: (o.box.h - iconSize) / 2 }}
+      >
+        <path
+          d={ICON_PATHS[o.icon] ?? ICON_PATHS.check}
+          fill="none"
+          stroke={iconColor}
+          strokeWidth={1.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={90}
+          strokeDashoffset={90 * (1 - prog(local, 120, 520, ease.outCubic))}
+        />
+      </svg>
+      {t ? (
+        <div style={{ position: "absolute", left: -o.box.x, top: -o.box.y, width: 1080, height: 1920 }}>
+          <TextView
+            plan={plan}
+            text={{ ...t, animation: "none", delayMs: 0 }}
+            ms={local}
+            beatMs={beat.durationMs}
+          />
+        </div>
       ) : null}
     </div>
   );

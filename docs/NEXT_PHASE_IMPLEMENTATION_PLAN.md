@@ -164,32 +164,34 @@ can be replaced.
 
 ## 10. Implementation order and checkpoints
 
-| Phase            | Scope                                                                                                                                  | Status      |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| A                | Repository audit, this plan                                                                                                            | done        |
-| B                | Creative Engine V2 data structures (`@cre/creative`)                                                                                   | in progress |
-| C                | Remotion local motion renderer + FFmpeg finishing (`@cre/motion`)                                                                      | planned     |
-| D                | Local Technical QA + Creative QA, quality gates, placeholder policy                                                                    | planned     |
-| E                | Six DEMO_ONLY benchmark products + demo media                                                                                          | planned     |
-| F                | Six local benchmark reels, `/creative-benchmark`                                                                                       | planned     |
-| **Checkpoint 1** | **Visual review of the six reels — stop here**                                                                                         |             |
-| G                | Master creative on V2 (pipeline integration, one batched LLM call, AI usage policy + cache + `/settings/ai-usage`, TTS after approval) | planned     |
-| H                | Market / locale model + account extensions                                                                                             | planned     |
-| I                | MarketEligibilityEngine                                                                                                                | planned     |
-| J                | LocalizedCreativeVariant architecture                                                                                                  | planned     |
-| K                | Translation memory + glossary                                                                                                          | planned     |
-| L                | Mock multilingual expansion (en-US, en-GB, de-DE, fr-FR, es-ES, it-IT, nl-NL, pl-PL)                                                   | planned     |
-| **Checkpoint 2** | **One approved master creative expanded to 8 markets**                                                                                 |             |
-| M                | Mock affiliate provider architecture (Temu, Awin, Impact, Amazon)                                                                      | planned     |
-| N                | Opportunity engine (affiliate + global score, thresholds)                                                                              | planned     |
-| O                | Mock global product discovery                                                                                                          | planned     |
-| P                | Distribution routing + market scheduling + dedup                                                                                       | planned     |
-| Q                | Global analytics / market profitability / performance profiles / escalation / stop-loss                                                | planned     |
-| **Checkpoint 3** | **Networks → offers → markets → score → master → approval → localization → distribution → analytics → mock revenue → profit**          |             |
+| Phase            | Scope                                                                                                                                  | Status                      |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| A                | Repository audit, this plan                                                                                                            | done                        |
+| B                | Creative Engine V2 data structures (`@cre/creative`)                                                                                   | done                        |
+| C                | Remotion local motion renderer + FFmpeg finishing (`@cre/motion`)                                                                      | done                        |
+| D                | Local Technical QA + Creative QA, quality gates, placeholder policy                                                                    | done                        |
+| E                | Six DEMO_ONLY benchmark products + demo media                                                                                          | done                        |
+| F                | Six local benchmark reels, `/creative-benchmark`                                                                                       | Tools + Beauty under review |
+| **Checkpoint 1** | **Visual review of the six reels — stop here**                                                                                         |                             |
+| G                | Master creative on V2 (pipeline integration, one batched LLM call, AI usage policy + cache + `/settings/ai-usage`, TTS after approval) | planned                     |
+| H                | Market / locale model + account extensions                                                                                             | planned                     |
+| I                | MarketEligibilityEngine                                                                                                                | planned                     |
+| J                | LocalizedCreativeVariant architecture                                                                                                  | planned                     |
+| K                | Translation memory + glossary                                                                                                          | planned                     |
+| L                | Mock multilingual expansion (en-US, en-GB, de-DE, fr-FR, es-ES, it-IT, nl-NL, pl-PL)                                                   | planned                     |
+| **Checkpoint 2** | **One approved master creative expanded to 8 markets**                                                                                 |                             |
+| M                | Mock affiliate provider architecture (Temu, Awin, Impact, Amazon)                                                                      | planned                     |
+| N                | Opportunity engine (affiliate + global score, thresholds)                                                                              | planned                     |
+| O                | Mock global product discovery                                                                                                          | planned                     |
+| P                | Distribution routing + market scheduling + dedup                                                                                       | planned                     |
+| Q                | Global analytics / market profitability / performance profiles / escalation / stop-loss                                                | planned                     |
+| **Checkpoint 3** | **Networks → offers → markets → score → master → approval → localization → distribution → analytics → mock revenue → profit**          |                             |
 
 Spec documentation (`CREATIVE_ENGINE_V2`, `QUALITY_GATES`, `LOCAL_FIRST_AI_POLICY`, `GLOBALIZATION_ARCHITECTURE`,
 `AFFILIATE_ARCHITECTURE`, `MARKET_EXPANSION`, `COST_MODEL`) is written with the phase that implements it, so it
-describes real code rather than intentions.
+describes real code rather than intentions. Phases B–F: [CREATIVE_ENGINE_V2](CREATIVE_ENGINE_V2.md),
+[QUALITY_GATES](QUALITY_GATES.md), [LOCAL_FIRST_AI_POLICY](LOCAL_FIRST_AI_POLICY.md), cost section in
+[COST_MODEL](COST_MODEL.md).
 
 No real publishing, paid AI calls, paid infrastructure or real affiliate credentials during this work.
 Mock success means the architecture works — nothing more.

@@ -1,4 +1,4 @@
-import type { BriefFeature, CreativeBrief, SceneUse } from "./brief.ts";
+import type { BriefFeature, CreativeBrief, MontageShot, SceneUse } from "./brief.ts";
 import { G, anchorOnScreen, containRect, lowerZone, rect, stackLabels, topZone } from "./layouts.ts";
 import { checklistItemBox, listRows, specRowBoxes, stepRows } from "./overlay-geometry.ts";
 import {
@@ -13,6 +13,7 @@ import {
   type LocalePack,
   type MediaRef,
   type MotionPreset,
+  type IconKind,
   type Overlay,
   type Point,
   type Rect,
@@ -25,7 +26,14 @@ import {
   type VisualBeatType,
   mediaShowsProduct,
 } from "./model.ts";
-import { FILLER_STEPS, MAX_BEATS, MIN_BEATS, STRUCTURES, type RecipeStep } from "./structures.ts";
+import {
+  FILLER_STEPS,
+  MAX_BEATS,
+  MIN_BEATS,
+  SHOT_GRAMMARS,
+  STRUCTURES,
+  type RecipeStep,
+} from "./structures.ts";
 import { STYLE_KITS, kitForCategory, type KitId, type StyleKit } from "./style-kits.ts";
 import { readingTimeMs } from "./subtitles.ts";
 import { estimateCapacity, stripEmphasis } from "./text-fit.ts";
@@ -61,9 +69,13 @@ interface Draft {
   overlays: Overlay[];
   baseMs: number;
   maxExtraMs?: number;
+  /** shorter floor than the kit's minimum beat (rapid montage cuts) */
+  minMs?: number;
   background?: VisualBeat["background"];
   camera?: VisualBeat["camera"];
   transition?: TransitionType;
+  /** transition that ignores the kit rotation (montage cuts) */
+  forceTransition?: { type: TransitionType; ms: number };
   showsProduct: boolean;
   sfx: SfxCue[];
   note: string;
@@ -291,10 +303,11 @@ function sceneText(
       ? c.top(G.TOP, role === "DISPLAY" ? 470 : 340)
       : c.low(G.CONTENT_BOTTOM - 364, 364);
   return c.text(beatId, name, value, role, box, {
-    maxLines: role === "DISPLAY" ? 3 : 3,
+    maxLines: 3,
     vAlign: scene.textPosition === "top" ? "top" : "bottom",
     delayMs: 90,
     surface: "scrim",
+    color: scene.textTone === "dark" ? "ink" : "onMedia",
   });
 }
 
@@ -375,6 +388,8 @@ function sceneBeat(c: Ctx, id: string, kind: "PROBLEM" | "SOLUTION", isFirst: bo
 function heroBeat(c: Ctx, id: string, prev: Draft | undefined): Draft {
   const { brief, kit } = c;
   const continuing = prev?.layout === "hero_low";
+  const hero = c.m(brief.heroMedia);
+  const heroBox = hero.height / hero.width > 1.3 ? rect(200, 470, 680, 740) : rect(70, 500, 940, 700);
   const text: TextElement[] = [];
   if (brief.product.eyebrow)
     text.push(
@@ -406,7 +421,7 @@ function heroBeat(c: Ctx, id: string, prev: Draft | undefined): Draft {
       media({
         assetId: brief.heroMedia,
         slot: "primary",
-        box: rect(70, 540, 940, 760),
+        box: heroBox,
         motion: continuing ? "product_float" : kit.direction.motion.hero,
         shadow: true,
         backlight: true,
@@ -433,7 +448,11 @@ function nextFeature(
 }
 
 function macroBeat(c: Ctx, id: string): Draft | null {
-  const f = nextFeature(c, (x) => Boolean(x.anchor || (x.media && x.mediaAnchor)), c.usedMacro);
+  // prefer features not already explained by a callout beat
+  const hasAnchor = (x: BriefFeature) => Boolean(x.anchor || (x.media && x.mediaAnchor));
+  const f =
+    nextFeature(c, (x) => hasAnchor(x) && !c.usedCallout.has(x.id), c.usedMacro) ??
+    nextFeature(c, hasAnchor, c.usedMacro);
   if (!f) return null;
   c.usedMacro.add(f.id);
   c.featureNo++;
@@ -458,12 +477,27 @@ function macroBeat(c: Ctx, id: string): Draft | null {
         },
       ),
     );
-  text.push(
-    c.text(id, "title", f.title, "HEADLINE", c.low(G.CONTENT_BOTTOM - 236, 236), {
-      maxLines: 2,
-      delayMs: 260,
-      surface: "scrim",
-    }),
+  if (f.title.trim())
+    text.push(
+      c.text(id, "title", f.title, "HEADLINE", c.low(G.CONTENT_BOTTOM - 236, 236), {
+        maxLines: 2,
+        delayMs: 260,
+        surface: "scrim",
+      }),
+    );
+  // chips frame the focal ring: beside it, then below the detail, then at the top — clear of the pack's own text
+  const chipSpots = [at.y - 48, G.CONTENT_BOTTOM - 96, G.TOP + 52];
+  const chipOverlays: Overlay[] = f.chips.map((ch, i) =>
+    chip(
+      c,
+      id,
+      i + 1,
+      ch.icon,
+      ch.label,
+      rect(G.L, chipSpots[i]!, Math.min(chipWidth(ch.label), i === 0 ? at.x - 175 - G.L : G.R_LOW - G.L), 96),
+      520 + i * 420,
+      i === 0 ? "accent" : "light",
+    ),
   );
   return {
     type: "PRODUCT_MACRO",
@@ -476,7 +510,8 @@ function macroBeat(c: Ctx, id: string): Draft | null {
         box: FULL,
         crop: "macro",
         ...(focus ? { focus } : {}),
-        zoom: [z, z * 1.1],
+        // with labels around the detail the push stays gentle so the pack text never slides under a label
+        zoom: [z, z * (f.chips.length ? 1.04 : 1.1)],
         motion: c.kit.direction.motion.macro,
         params: { ...c.brief.heroParams, ...f.params },
         animate: f.animate,
@@ -491,8 +526,9 @@ function macroBeat(c: Ctx, id: string): Draft | null {
         shape: "ring",
         rect: rect(at.x - 170, at.y - 170, 340, 340),
       },
+      ...chipOverlays,
     ],
-    baseMs: 2400,
+    baseMs: 2400 + chipOverlays.length * 200,
     background: "dark",
     showsProduct: c.isProduct(assetId),
     sfx: [{ atMs: 380, kind: "tick" }],
@@ -507,8 +543,8 @@ function calloutsBeat(c: Ctx, id: string): Draft | null {
   features.forEach((f) => c.usedCallout.add(f.id));
   const avgX = features.reduce((s, f) => s + hero.anchors[f.anchor!]!.x, 0) / features.length;
   const side: "left" | "right" = avgX >= 0.5 ? "right" : "left";
-  const productBox = side === "right" ? rect(-30, 560, 720, 860) : rect(390, 560, 720, 860);
-  const col = side === "right" ? { x: 650, w: G.R_LOW - 650 } : { x: G.L, w: 290 };
+  const productBox = side === "right" ? rect(-20, 560, 700, 860) : rect(400, 560, 700, 860);
+  const col = side === "right" ? { x: 690, w: G.R_LOW - 690 } : { x: G.L, w: 300 };
   const targets = features.map((f) => anchorOnScreen(hero, productBox, f.anchor!));
   const labelH = 132;
   const ys = stackLabels(
@@ -566,7 +602,7 @@ function statBeat(c: Ctx, id: string): Draft | null {
   const mediaId = s.media ?? c.brief.heroMedia;
   const unitSlot = c.slot(id, "unit", s.unit, "STAT", rect(G.L, 300, 400, 120), 1, 250);
   if (s.style === "gauge") {
-    const box = rect(190, 280, 700, 700);
+    const box = rect(240, 250, 600, 600);
     return {
       type: "NUMBER_STAT",
       purpose: "SPEC",
@@ -575,7 +611,9 @@ function statBeat(c: Ctx, id: string): Draft | null {
         media({
           assetId: mediaId,
           slot: "background",
-          box: c.isProduct(mediaId) ? rect(150, 1110, 780, 560) : rect(0, 1090, FRAME_WIDTH, 830),
+          box: c.isProduct(mediaId)
+            ? rect(150, 990, 780, G.CONTENT_BOTTOM - 990)
+            : rect(0, 980, FRAME_WIDTH, 940),
           crop: c.isProduct(mediaId) ? "contain" : "cover",
           motion: "slow_zoom",
           zoom: [1, 1.05],
@@ -586,7 +624,7 @@ function statBeat(c: Ctx, id: string): Draft | null {
         }),
       ],
       text: [
-        c.text(id, "label", s.label, "HEADLINE", lowerZone(976, 120, "center"), {
+        c.text(id, "label", s.label, "HEADLINE", lowerZone(862, 120, "center"), {
           maxLines: 1,
           delayMs: 300,
           align: "center",
@@ -625,7 +663,7 @@ function statBeat(c: Ctx, id: string): Draft | null {
       media({
         assetId: mediaId,
         slot: "primary",
-        box: rect(60, 720, 960, 760),
+        box: rect(60, 700, 960, 660),
         crop: c.isProduct(mediaId) ? "contain" : "cover",
         motion: "slow_zoom",
         zoom: [1, 1.06],
@@ -712,7 +750,7 @@ function listBeat(c: Ctx, id: string, kind: "SPECS" | "CHECKLIST" | "RECAP"): Dr
       media({
         assetId: c.brief.heroMedia,
         slot: "primary",
-        box: rect(150, 400, 780, 440),
+        box: rect(100, 320, 880, 540),
         motion: "product_float",
         shadow: true,
         params: c.brief.heroParams,
@@ -768,6 +806,7 @@ function beforeAfterBeat(c: Ctx, id: string): Draft | null {
         maxLines: 2,
         delayMs: 1500,
         surface: "scrim",
+        color: "onMedia",
       }),
     ],
     overlays: [
@@ -840,6 +879,7 @@ function sideBySideBeat(c: Ctx, id: string): Draft | null {
         maxLines: 2,
         delayMs: 700,
         surface: "scrim",
+        color: "onMedia",
       }),
     ],
     overlays: [
@@ -923,9 +963,13 @@ function stepsBeat(c: Ctx, id: string): Draft | null {
   const s = c.brief.steps;
   if (!s) return null;
   const n = s.items.length;
-  const box = rect(G.L, 470, 520, 900);
   const stagger = 650;
   const mediaId = s.media ?? c.brief.heroMedia;
+  // wide media (a light bar, a hub) sits above the list; square / tall media beside it
+  const ref = c.m(mediaId);
+  const stacked = ref.width / ref.height >= 1.3;
+  const box = stacked ? rect(G.L, 960, G.R_LOW - G.L, G.CONTENT_BOTTOM - 960) : rect(G.L, 470, 470, 860);
+  const mediaBox = stacked ? rect(60, 420, 960, 500) : rect(560, 520, 520, 820);
   const animate = s.param
     ? { [s.param]: s.items.map((_, i) => ({ atMs: 300 + i * stagger, value: i + 1 })) }
     : {};
@@ -937,7 +981,7 @@ function stepsBeat(c: Ctx, id: string): Draft | null {
       media({
         assetId: mediaId,
         slot: "primary",
-        box: rect(470, 520, 610, 860),
+        box: mediaBox,
         crop: c.isProduct(mediaId) ? "contain" : "cover",
         motion: "none",
         params: s.params,
@@ -961,13 +1005,15 @@ function stepsBeat(c: Ctx, id: string): Draft | null {
     maxExtraMs: 1400,
     showsProduct: c.isProduct(mediaId),
     sfx: s.items.map((_, i) => ({ atMs: 300 + i * stagger, kind: "pop" as const, gainDb: -14 })),
-    note: `${n} numbered steps synced with media parameter ${s.param ?? "—"}`,
+    note: `${n} numbered steps (${stacked ? "media above" : "media beside"}) synced with media parameter ${s.param ?? "—"}`,
   };
 }
 
 function ctaBeat(c: Ctx, id: string): Draft {
   const { brief } = c;
-  const panel = c.low(G.CONTENT_BOTTOM - 496, 496);
+  const scene = brief.cta.scene;
+  // over a scene the card sits at the top, so the product in the scene stays visible below it
+  const panel = scene ? c.top(G.TOP + 30, 470) : c.low(G.CONTENT_BOTTOM - 496, 496);
   const inner = rect(panel.x + 40, panel.y + 40, panel.w - 80, panel.h - 80);
   const buttonBox = rect(inner.x + (c.align === "center" ? (inner.w - 560) / 2 : 0), panel.y + 252, 560, 112);
   const text: TextElement[] = [
@@ -989,17 +1035,31 @@ function ctaBeat(c: Ctx, id: string): Draft {
     type: "CTA_CARD",
     purpose: "CTA",
     layout: "cta_card",
-    media: [
-      media({
-        assetId: brief.heroMedia,
-        slot: "primary",
-        box: rect(150, 236, 780, 600),
-        motion: "product_float",
-        shadow: true,
-        backlight: true,
-        params: brief.heroParams,
-      }),
-    ],
+    media: scene
+      ? [
+          media({
+            assetId: scene.media,
+            slot: "primary",
+            box: FULL,
+            crop: "cover",
+            ...(scene.focus ? { focus: scene.focus } : {}),
+            zoom: [scene.zoom, scene.zoom * 1.05],
+            motion: "slow_zoom",
+            params: scene.params,
+          }),
+        ]
+      : [
+          media({
+            assetId: brief.heroMedia,
+            slot: "primary",
+            box: rect(150, 236, 780, 600),
+            motion: "product_float",
+            shadow: true,
+            backlight: true,
+            params: brief.heroParams,
+          }),
+        ],
+    ...(scene ? { background: "media" as const } : {}),
     text,
     overlays: [
       { id: `${id}.panel`, kind: "panel", delayMs: 80, box: panel, tone: "surface", shadow: true },
@@ -1016,7 +1076,215 @@ function ctaBeat(c: Ctx, id: string): Draft {
     showsProduct: true,
     transition: "scale_in",
     sfx: [{ atMs: 480, kind: "pop" }],
-    note: "CTA card with product",
+    note: scene ? `CTA over ${scene.media}` : "CTA card with product",
+  };
+}
+
+/* ------------------------------------------------------------------ niche shots ------------------ */
+
+/** chip width from the label length (the resolver measures the text; this only sizes the pill) */
+function chipWidth(label: string): number {
+  return Math.min(G.R_LOW - G.L, Math.max(300, 150 + stripEmphasis(label).length * 24));
+}
+
+function chipTextBox(box: Rect): Rect {
+  return rect(box.x + box.h + 4, box.y + 10, box.w - box.h - 28, box.h - 20);
+}
+
+function chip(
+  c: Ctx,
+  beatId: string,
+  n: number,
+  icon: IconKind,
+  label: string,
+  box: Rect,
+  delayMs: number,
+  tone: "light" | "dark" | "accent",
+): Overlay {
+  return {
+    id: `${beatId}.chip${n}`,
+    kind: "icon_chip",
+    delayMs,
+    box,
+    icon,
+    tone,
+    textSlot: c.slot(beatId, `chip${n}`, label, "BODY", chipTextBox(box), 1, delayMs),
+  };
+}
+
+function lifestyleBeat(c: Ctx, id: string): Draft | null {
+  const s = c.brief.lifestyle;
+  if (!s) return null;
+  return {
+    type: "PRODUCT_IN_USE",
+    purpose: "PRODUCT",
+    layout: "full_bleed",
+    media: sceneMedia(c, s, c.kit.direction.motion.inUse, [1.04, 1.12]),
+    text: s.text ? [sceneText(c, id, "text", s, s.text, s.textRole)] : [],
+    overlays: sceneOverlays(id, c, s),
+    baseMs: 2600,
+    background: "media",
+    showsProduct: s.productInset || c.isProduct(s.media),
+    sfx: [{ atMs: 200, kind: "shimmer", gainDb: -18 }],
+    note: `Product in context: ${s.media}`,
+  };
+}
+
+function coverRectOf(ref: MediaRef): Rect {
+  const s = Math.max(G.W / ref.width, G.H / ref.height);
+  return rect((G.W - ref.width * s) / 2, (G.H - ref.height * s) / 2, ref.width * s, ref.height * s);
+}
+
+function ingredientBeat(c: Ctx, id: string): Draft | null {
+  const g = c.brief.ingredient;
+  if (!g) return null;
+  const frame = coverRectOf(c.m(g.media));
+  const text: TextElement[] = g.title
+    ? [
+        c.text(id, "title", g.title, "HEADLINE", c.top(G.TOP, 230), {
+          maxLines: 2,
+          delayMs: 100,
+          surface: "scrim",
+        }),
+      ]
+    : [];
+  const overlays: Overlay[] = g.chips.map((ch, i) => {
+    const w = chipWidth(ch.label);
+    const px = frame.x + ch.at.x * frame.w;
+    const py = frame.y + ch.at.y * frame.h;
+    const x = Math.round(Math.min(G.R_LOW - w, Math.max(G.L, px - w / 2)));
+    const y = Math.round(Math.min(G.CONTENT_BOTTOM - 96, Math.max(G.TOP + 250, py - 48)));
+    return chip(
+      c,
+      id,
+      i + 1,
+      ch.icon,
+      ch.label,
+      rect(x, y, w, 96),
+      500 + i * 520,
+      i === 0 ? "accent" : "light",
+    );
+  });
+  return {
+    type: "FEATURE_CALLOUT",
+    purpose: "FEATURE",
+    layout: "full_bleed",
+    media: [
+      media({
+        assetId: g.media,
+        slot: "primary",
+        box: FULL,
+        crop: "cover",
+        motion: "slow_zoom",
+        zoom: [1, 1.06],
+        params: g.params,
+        animate: g.animate,
+      }),
+    ],
+    text,
+    overlays,
+    baseMs: 2200 + g.chips.length * 450,
+    maxExtraMs: 1200,
+    background: "media",
+    showsProduct: c.isProduct(g.media),
+    sfx: overlays.map((o) => ({ atMs: o.delayMs, kind: "tick" as const, gainDb: -16 })),
+    note: `How it works: ${g.media} with ${g.chips.length} pictogram labels`,
+  };
+}
+
+/** benefits as quick cuts — one image and one short label per shot, never a bullet slide */
+function montageBeats(c: Ctx, firstId: number, available: number): Draft[] {
+  const m = c.brief.montage;
+  if (!m || available < 2) return [];
+  const shots = m.shots.slice(0, available);
+  return shots.map((shot: MontageShot, k): Draft => {
+    const id = beatId(firstId + k);
+    const w = chipWidth(shot.label) + 40;
+    const box =
+      c.align === "center"
+        ? rect(Math.round((G.W - w) / 2), G.CONTENT_BOTTOM - 140, w, 112)
+        : rect(G.L, G.CONTENT_BOTTOM - 140, w, 112);
+    const ref = c.m(shot.media);
+    return {
+      type: "FEATURE_CALLOUT",
+      purpose: "FEATURE",
+      layout: "full_bleed",
+      media: [
+        media({
+          assetId: shot.media,
+          slot: "primary",
+          box: FULL,
+          crop: ref.role === "product" ? "macro" : "cover",
+          ...(shot.focus ? { focus: shot.focus } : {}),
+          zoom: [shot.zoom, shot.zoom * 1.07],
+          motion: k % 2 ? "pan_left" : "pan_right",
+          params: shot.params,
+          animate: shot.animate,
+        }),
+      ],
+      text: [],
+      overlays: [chip(c, id, 1, shot.icon, shot.label, box, 160, "light")],
+      baseMs: 1500,
+      maxExtraMs: 400,
+      minMs: 1300,
+      background: ref.role === "product" ? "dark" : "media",
+      showsProduct: c.isProduct(shot.media),
+      ...(k > 0
+        ? { forceTransition: { type: k % 2 ? ("mask_wipe" as const) : ("slide_left" as const), ms: 240 } }
+        : {}),
+      sfx: [{ atMs: 160, kind: "tick", gainDb: -15 }],
+      note: `Benefit montage ${k + 1}/${shots.length}: ${shot.media}`,
+    };
+  });
+}
+
+function heroReturnBeat(c: Ctx, id: string): Draft | null {
+  const h = c.brief.heroReturn;
+  if (!h) return null;
+  const text: TextElement[] = [];
+  if (h.title)
+    text.push(
+      c.text(id, "title", h.title, "HEADLINE", c.top(G.TOP, 250), {
+        maxLines: 2,
+        delayMs: 260,
+        surface: "scrim",
+        color: "ink",
+      }),
+    );
+  if (h.tagline)
+    text.push(
+      c.text(id, "tagline", h.tagline, "BODY", c.top(G.TOP + 260, 120), {
+        maxLines: 2,
+        delayMs: 620,
+        surface: "scrim",
+        color: "ink",
+      }),
+    );
+  return {
+    type: "PRODUCT_HERO",
+    purpose: "PRODUCT",
+    layout: "hero_center",
+    media: [
+      media({
+        assetId: h.media,
+        slot: "primary",
+        box: FULL,
+        crop: "cover",
+        motion: "cinematic_push",
+        zoom: [1.02, 1.1],
+        params: h.params,
+        animate: h.animate,
+      }),
+    ],
+    text,
+    overlays: [
+      { id: `${id}.sweep`, kind: "light_sweep", delayMs: 300, box: rect(0, 400, G.W, 1200), angle: 22 },
+    ],
+    baseMs: 2600,
+    background: "media",
+    showsProduct: c.isProduct(h.media),
+    sfx: [{ atMs: 200, kind: "shimmer", gainDb: -15 }],
+    note: `Hero return in ${h.media}`,
   };
 }
 
@@ -1054,12 +1322,46 @@ function build(step: RecipeStep, c: Ctx, id: string, index: number, prev: Draft 
       return screenBeat(c, id);
     case "STEPS":
       return stepsBeat(c, id);
+    case "LIFESTYLE":
+      return lifestyleBeat(c, id);
+    case "INGREDIENT":
+      return ingredientBeat(c, id);
+    case "HERO_RETURN":
+      return heroReturnBeat(c, id);
+    case "MONTAGE":
+      return null; // multi-beat — expanded by the orchestrator
     case "CTA":
       return ctaBeat(c, id);
   }
 }
 
+/** camera move per layout: the world drifts slowly so no shot reads as a still (UI layers stay put) */
+function cameraFor(d: Draft, energy: number): VisualBeat["camera"] {
+  switch (d.layout) {
+    case "callout_left":
+    case "callout_right":
+    case "split_vertical":
+    case "split_horizontal":
+    case "screen_demo":
+      return { zoom: [1, 1], x: [0, 0], y: [0, 0] };
+    case "full_bleed":
+      return { zoom: [1, 1.07 - energy * 0.02], x: [0, 0], y: [0, -18] };
+    case "macro_focus":
+      return { zoom: [1, 1.04], x: [0, 0], y: [0, 0] };
+    default:
+      return { zoom: [1, 1.07 - energy * 0.02], x: [0, 0], y: [0, -10] };
+  }
+}
+
 const beatId = (n: number) => `s${String(n).padStart(2, "0")}`;
+
+const ENTRANCE_MOTIONS = new Set<MotionPreset>([
+  "whip_in",
+  "tilt_in",
+  "drop_in",
+  "slide_in_left",
+  "slide_in_right",
+]);
 
 function quantize(ms: number, gridMs: number): number {
   return Math.max(gridMs, Math.round(ms / gridMs) * gridMs);
@@ -1069,11 +1371,14 @@ export function directCreative(brief: CreativeBrief, opts: DirectorOptions = {})
   const kit = opts.kit ? STYLE_KITS[opts.kit] : kitForCategory(brief.category);
   const c = new Ctx(brief, kit);
   const recipe = STRUCTURES[brief.structure];
+  const grammar = SHOT_GRAMMARS[kit.id]?.[brief.structure];
   c.reasons.push(`Kit "${kit.id}" for category "${brief.category}" — ${kit.direction.visualStyle}`);
-  c.reasons.push(`Structure ${brief.structure}: ${recipe.description}`);
+  c.reasons.push(
+    `Structure ${brief.structure}: ${recipe.description}${grammar ? ` — told with the ${kit.id} shot grammar` : ""}`,
+  );
 
   // 1. walk the recipe (CTA is always last); top up with fillers if the brief lacked material
-  const body = recipe.steps.filter((s) => s !== "CTA");
+  const body = (grammar ?? recipe.steps).filter((s) => s !== "CTA");
   const drafts: { step: RecipeStep; draft: Draft }[] = [];
   const tryStep = (step: RecipeStep) => {
     const id = beatId(drafts.length + 1);
@@ -1081,7 +1386,16 @@ export function directCreative(brief: CreativeBrief, opts: DirectorOptions = {})
     if (d) drafts.push({ step, draft: d });
     else c.reasons.push(`Skipped ${step}: no material in the brief`);
   };
-  for (const step of body) if (drafts.length < MAX_BEATS - 1) tryStep(step);
+  body.forEach((step, i) => {
+    if (drafts.length >= MAX_BEATS - 1) return;
+    if (step === "MONTAGE") {
+      const shots = montageBeats(c, drafts.length + 1, MAX_BEATS - 1 - drafts.length - (body.length - i - 1));
+      if (shots.length) shots.forEach((d) => drafts.push({ step, draft: d }));
+      else c.reasons.push("Skipped MONTAGE: no material in the brief");
+      return;
+    }
+    tryStep(step);
+  });
   for (const step of FILLER_STEPS) {
     if (drafts.length >= MIN_BEATS - 1) break;
     tryStep(step);
@@ -1093,14 +1407,20 @@ export function directCreative(brief: CreativeBrief, opts: DirectorOptions = {})
   const dir = kit.direction;
   const pace = { fast: 0.92, medium: 1, calm: 1.1 }[dir.pacing];
   const gridMs = Math.round(60_000 / dir.music.bpm / 2);
-  const durations = drafts.map(({ draft }) => {
-    const reading = Math.max(
-      0,
-      ...draft.text.map((t) => t.delayMs + readingTimeMs(c.strings[t.slot] ?? "") + 450),
-    );
+  // reading floor: every text element and every label inside an overlay (chips, callouts) of the beat
+  const readingFloor = (i: number, pad: number) => {
+    const id = beatId(i + 1);
+    const els = drafts[i]!.draft.text.map((t) => t.delayMs + readingTimeMs(c.strings[t.slot] ?? "") + pad);
+    const labels = Object.entries(c.slotMeta)
+      .filter(([, m]) => m.beatId === id && m.role !== "SPEC")
+      .map(([slot, m]) => Math.min(m.delayMs, 1200) + readingTimeMs(c.strings[slot] ?? "") * 0.8 + pad);
+    return Math.max(0, ...els, ...labels);
+  };
+  const durations = drafts.map(({ draft }, i) => {
+    const reading = readingFloor(i, 450);
     const raw = Math.max(draft.baseMs * pace, reading);
     const max = dir.beatMs.max + (draft.maxExtraMs ?? 0);
-    return Math.min(max, Math.max(dir.beatMs.min, raw));
+    return Math.min(max, Math.max(draft.minMs ?? dir.beatMs.min, raw));
   });
   const target = Math.min(30_000, Math.max(15_000, brief.targetDurationMs));
   const total = durations.reduce((s, d) => s + d, 0);
@@ -1108,23 +1428,22 @@ export function directCreative(brief: CreativeBrief, opts: DirectorOptions = {})
   const scaled = durations.map((d, i) => {
     const draft = drafts[i]!.draft;
     const max = dir.beatMs.max + (draft.maxExtraMs ?? 0);
-    const reading = Math.max(
-      0,
-      ...draft.text.map((t) => t.delayMs + readingTimeMs(c.strings[t.slot] ?? "") + 300),
+    const reading = readingFloor(i, 300);
+    const min = draft.minMs ?? dir.beatMs.min * 0.85;
+    // reading time is a hard floor (the kit's max beat length is only style); round up onto the grid
+    const target = Math.max(
+      reading,
+      Math.min(max * 1.15, Math.max(min, d * Math.min(1.25, Math.max(0.8, scale)))),
     );
-    return quantize(
-      Math.min(
-        max * 1.15,
-        Math.max(dir.beatMs.min * 0.85, reading, d * Math.min(1.25, Math.max(0.8, scale))),
-      ),
-      gridMs,
-    );
+    const q = quantize(target, gridMs);
+    return q < reading ? q + gridMs : q;
   });
 
   // 3. transitions: cut into the hook, then the kit's rotation without immediate repeats
   let rot = 0;
   const transitions: TransitionType[] = drafts.map(({ draft }, i) => {
     if (i === 0) return "cut";
+    if (draft.forceTransition) return draft.forceTransition.type;
     if (draft.transition && dir.transitions.includes(draft.transition)) return draft.transition;
     let t = dir.transitions[rot % dir.transitions.length]!;
     rot++;
@@ -1144,20 +1463,31 @@ export function directCreative(brief: CreativeBrief, opts: DirectorOptions = {})
       purpose: draft.purpose,
       durationMs: scaled[i]!,
       layout: draft.layout,
-      media: draft.media,
+      // an entrance motion (whip-in, drop-in …) is the transition when the beat is cut in; under a moving
+      // transition it would leave the incoming frames empty, so it becomes a gentle push instead
+      media:
+        transition === "cut" || transition === "match_cut"
+          ? draft.media
+          : draft.media.map((m) =>
+              ENTRANCE_MOTIONS.has(m.motion) && m.enterMs === 0
+                ? { ...m, motion: "cinematic_push" as const }
+                : m,
+            ),
       text: draft.text,
       overlays: draft.overlays,
       transitionIn: {
         type: transition,
         durationMs:
-          transition === "cut" || transition === "match_cut"
-            ? 0
-            : transition === "flash"
-              ? 160
-              : dir.transitionMs,
+          draft.forceTransition && i > 0
+            ? draft.forceTransition.ms
+            : transition === "cut" || transition === "match_cut"
+              ? 0
+              : transition === "flash"
+                ? 160
+                : dir.transitionMs,
       },
       background: draft.background ?? "kit",
-      camera: draft.camera ?? { zoom: [1, 1], x: [0, 0], y: [0, 0] },
+      camera: draft.camera ?? cameraFor(draft, kit.tokens.motion.energy),
       note: draft.note,
     };
     t += beat.durationMs;
@@ -1192,7 +1522,8 @@ export function directCreative(brief: CreativeBrief, opts: DirectorOptions = {})
       if (cue.atMs >= b.durationMs) continue;
       const keep =
         Number.parseInt(fnv1a(`${b.id}:${cue.kind}:${cue.atMs}`).slice(0, 4), 16) / 0xffff < dir.sfxDensity;
-      if (keep || cue.kind === "pop")
+      // the hook's accent and every pop always play; the rest is thinned to the kit's density
+      if (keep || cue.kind === "pop" || i === 0)
         sfx.push({ atMs: start + cue.atMs, kind: cue.kind, gainDb: cue.gainDb ?? -11 });
     }
     start += b.durationMs;

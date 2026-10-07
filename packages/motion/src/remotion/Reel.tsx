@@ -187,6 +187,17 @@ const ORDER: Record<string, number> = {
   inset: 5,
 };
 
+/** overlays that belong to the scene and move with the camera; everything else is UI and stays put */
+const WORLD_OVERLAYS = new Set([
+  "highlight",
+  "callout",
+  "measure",
+  "arrow",
+  "particles",
+  "light_sweep",
+  "cursor",
+]);
+
 export const BeatView: React.FC<{ plan: RenderPlan; beat: ResolvedBeat; ms: number }> = ({
   plan,
   beat,
@@ -196,20 +207,44 @@ export const BeatView: React.FC<{ plan: RenderPlan; beat: ResolvedBeat; ms: numb
   const pct = slider && slider.kind === "slider" ? sliderPct(slider, ms) : null;
   const media = [...beat.media].sort((x, y) => (ORDER[x.slot] ?? 3) - (ORDER[y.slot] ?? 3));
   const panels = beat.overlays.filter((o) => o.kind === "panel");
-  const rest = beat.overlays.filter((o) => o.kind !== "panel" && o.kind !== "slider");
+  const world = beat.overlays.filter((o) => WORLD_OVERLAYS.has(o.kind));
+  const ui = beat.overlays.filter(
+    (o) => o.kind !== "panel" && o.kind !== "slider" && !WORLD_OVERLAYS.has(o.kind),
+  );
+  // camera: linear drift over the whole beat (eased moves stall at the ends and read as stills)
+  const t = clamp01(ms / Math.max(1, beat.durationMs));
+  const cam = beat.camera;
+  const z = cam.zoom[0] + (cam.zoom[1] - cam.zoom[0]) * t;
+  const cx = cam.x[0] + (cam.x[1] - cam.x[0]) * t;
+  const cy = cam.y[0] + (cam.y[1] - cam.y[0]) * t;
+  const moving = z !== 1 || cx !== 0 || cy !== 0;
   return (
     <AbsoluteFill>
-      <BeatBackground plan={plan} beat={beat} ms={ms} />
-      {media.map((m, i) => (
-        <MediaView
-          key={`${m.assetId}-${i}`}
-          plan={plan}
-          media={m}
-          ms={ms}
-          beatMs={beat.durationMs}
-          {...(m.slot === "after" && pct !== null ? { revealPct: pct } : {})}
-        />
-      ))}
+      <AbsoluteFill
+        style={
+          moving
+            ? {
+                transform: `translate(${cx.toFixed(2)}px, ${cy.toFixed(2)}px) scale(${z.toFixed(5)})`,
+                transformOrigin: "50% 50%",
+              }
+            : undefined
+        }
+      >
+        <BeatBackground plan={plan} beat={beat} ms={ms} />
+        {media.map((m, i) => (
+          <MediaView
+            key={`${m.assetId}-${i}`}
+            plan={plan}
+            media={m}
+            ms={ms}
+            beatMs={beat.durationMs}
+            {...(m.slot === "after" && pct !== null ? { revealPct: pct } : {})}
+          />
+        ))}
+        {world.map((o) => (
+          <OverlayView key={o.id} plan={plan} beat={beat} overlay={o} ms={ms} />
+        ))}
+      </AbsoluteFill>
       {slider && slider.kind === "slider" ? (
         <OverlayView plan={plan} beat={beat} overlay={slider} ms={ms} />
       ) : null}
@@ -219,7 +254,7 @@ export const BeatView: React.FC<{ plan: RenderPlan; beat: ResolvedBeat; ms: numb
       {beat.texts.map((t) => (
         <TextView key={t.id} plan={plan} text={t} ms={ms} beatMs={beat.durationMs} />
       ))}
-      {rest.map((o) => (
+      {ui.map((o) => (
         <OverlayView key={o.id} plan={plan} beat={beat} overlay={o} ms={ms} />
       ))}
     </AbsoluteFill>

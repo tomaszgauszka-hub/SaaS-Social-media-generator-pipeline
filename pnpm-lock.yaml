@@ -71,6 +71,9 @@ importers:
       '@cre/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@cre/creative':
+        specifier: workspace:*
+        version: link:../../packages/creative
       '@cre/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -120,9 +123,15 @@ importers:
       '@cre/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@cre/creative':
+        specifier: workspace:*
+        version: link:../../packages/creative
       '@cre/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@cre/motion':
+        specifier: workspace:*
+        version: link:../../packages/motion
       '@cre/pipeline':
         specifier: workspace:*
         version: link:../../packages/pipeline
@@ -4585,7 +4594,7 @@ snapshots:
       react-refresh: 0.18.0
       remotion: 4.0.534(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       style-loader: 4.0.0(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.29))
-      webpack: 5.105.0(esbuild@0.28.2)(postcss@8.5.29)
+      webpack: 5.105.0(esbuild@0.28.1)(postcss@8.5.29)
     transitivePeerDependencies:
       - '@minify-html/node'
       - '@remotion/video-matting'
@@ -5518,7 +5527,7 @@ snapshots:
       semver: 7.8.5
     optionalDependencies:
       '@rspack/core': 1.7.11(@swc/helpers@0.5.23)
-      webpack: 5.105.0(esbuild@0.28.2)(postcss@8.5.29)
+      webpack: 5.105.0(esbuild@0.28.1)(postcss@8.5.29)
 
   cssesc@3.0.0: {}
 
@@ -6584,7 +6593,7 @@ snapshots:
 
   style-loader@4.0.0(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.29)):
     dependencies:
-      webpack: 5.105.0(esbuild@0.28.2)(postcss@8.5.29)
+      webpack: 5.105.0(esbuild@0.28.1)(postcss@8.5.29)
 
   styled-jsx@5.1.6(@babel/core@7.29.7)(react@19.3.0):
     dependencies:
@@ -6601,15 +6610,15 @@ snapshots:
 
   tapable@2.3.3: {}
 
-  terser-webpack-plugin@5.6.1(esbuild@0.28.2)(postcss@8.5.29)(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.29)):
+  terser-webpack-plugin@5.6.1(esbuild@0.28.1)(postcss@8.5.29)(webpack@5.105.0(esbuild@0.28.2)(postcss@8.5.29)):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       jest-worker: 27.5.1
       schema-utils: 4.5.0
       terser: 5.51.2
-      webpack: 5.105.0(esbuild@0.28.2)(postcss@8.5.29)
+      webpack: 5.105.0(esbuild@0.28.1)(postcss@8.5.29)
     optionalDependencies:
-      esbuild: 0.28.2
+      esbuild: 0.28.1
       postcss: 8.5.29
 
   terser@5.51.2:
@@ -6737,7 +6746,7 @@ snapshots:
 
   webpack-sources@3.6.0: {}
 
-  webpack@5.105.0(esbuild@0.28.2)(postcss@8.5.29):
+  webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.29):
     dependencies:
       '@types/eslint-scope': 3.7.7
       '@types/estree': 1.0.9
@@ -6761,7 +6770,7 @@ snapshots:
       neo-async: 2.6.2
       schema-utils: 4.5.0
       tapable: 2.3.3
-      terser-webpack-plugin: 5.6.1(esbuild@0.28.2)(postcss@8.5.29)(webpack@5.105.0(esbuild@0.28.1)(postcss@8.5.29))
+      terser-webpack-plugin: 5.6.1(esbuild@0.28.1)(postcss@8.5.29)(webpack@5.105.0(esbuild@0.28.2)(postcss@8.5.29))
       watchpack: 2.5.2
       webpack-sources: 3.6.0
     transitivePeerDependencies:

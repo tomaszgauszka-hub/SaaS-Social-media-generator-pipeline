@@ -137,6 +137,8 @@ export function textColor(p: Palette, c: TextColor): string {
       return p.surfaceInk;
     case "accentInk":
       return p.accentInk;
+    case "onMedia":
+      return "#FFFFFF";
   }
 }
 

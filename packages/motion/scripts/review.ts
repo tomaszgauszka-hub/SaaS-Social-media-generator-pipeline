@@ -7,6 +7,7 @@ import path from "node:path";
 import { BENCHMARK_BRIEFS, demoMedia, type DemoMediaKey } from "@cre/creative/benchmark";
 import { STYLE_KITS, kitForCategory } from "@cre/creative";
 import { fontAssets, prepareCreative } from "@cre/creative/node";
+import { renderFinishedReel } from "../src/finish.ts";
 import { renderMediaSheets, renderReelStills } from "../src/render.ts";
 
 const [mode, ...rest] = process.argv.slice(2);
@@ -51,6 +52,25 @@ if (mode === "sheets") {
       .join("\n"),
   );
   console.log(await renderReelStills(prepared.plan, list, out));
+} else if (mode === "video") {
+  for (const id of rest) {
+    const brief = BENCHMARK_BRIEFS.find((b) => b.id === id);
+    if (!brief) throw new Error(`unknown brief ${id}`);
+    const prepared = prepareCreative(brief);
+    const r = await renderFinishedReel(prepared.plan, out, { onProgress: () => undefined });
+    console.log(
+      JSON.stringify({
+        id,
+        file: r.file,
+        renderMs: r.renderMs,
+        fps: r.renderFps.toFixed(1),
+        audioMs: r.audioMs,
+        finishMs: r.finishMs,
+        info: r.info,
+        loud: r.sourceLoudness,
+      }),
+    );
+  }
 } else {
   console.log("usage: review.ts sheets <keys…> | stills <briefId> [frames…]");
 }

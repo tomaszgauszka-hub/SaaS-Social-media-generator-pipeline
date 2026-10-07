@@ -1,5 +1,14 @@
 import { z } from "zod";
-import { CreativeStructure, Keyframes, MediaRef, ParamValue, PlatformKey, Point, Rect } from "./model.ts";
+import {
+  CreativeStructure,
+  IconKind,
+  Keyframes,
+  MediaRef,
+  ParamValue,
+  PlatformKey,
+  Point,
+  Rect,
+} from "./model.ts";
 
 /**
  * CreativeBrief — the director's input: product facts and approved copy (in production produced by ONE batched,
@@ -28,6 +37,10 @@ export const SceneUse = z.object({
   timer: z.object({ seconds: z.number().positive(), label: z.string().optional() }).optional(),
   /** show the product (hero media) in a corner of the scene */
   productInset: z.boolean().default(false),
+  /** light scene → dark ink on a light scrim; dark scene (default) → white on a dark scrim */
+  textTone: z.enum(["light", "dark"]).default("light"),
+  /** text role for the scene line (hooks use DISPLAY) */
+  textRole: z.enum(["HEADLINE", "BODY"]).default("HEADLINE"),
 });
 export type SceneUse = z.infer<typeof SceneUse>;
 
@@ -59,8 +72,26 @@ export const BriefFeature = z.object({
   params: Params,
   animate: Animate,
   stat: BriefStat.optional(),
+  /** short animated labels shown with the detail shot (e.g. "SPF 50", "Mineral filter") */
+  chips: z
+    .array(z.object({ icon: IconKind, label: z.string() }))
+    .max(3)
+    .default([]),
 });
 export type BriefFeature = z.infer<typeof BriefFeature>;
+
+/** one quick shot of a benefit montage: its own image, one short label */
+export const MontageShot = z.object({
+  media: z.string(),
+  label: z.string(),
+  icon: IconKind.default("check"),
+  params: Params,
+  animate: Animate,
+  /** anchor to frame on (cover crop) and a zoom for variety */
+  focus: z.string().optional(),
+  zoom: z.number().positive().default(1.08),
+});
+export type MontageShot = z.infer<typeof MontageShot>;
 
 export const CreativeBrief = z.object({
   id: z.string(),
@@ -139,7 +170,47 @@ export const CreativeBrief = z.object({
     })
     .optional(),
   recap: z.object({ title: z.string(), items: z.array(z.string()).min(2).max(5) }).optional(),
-  cta: z.object({ headline: z.string(), button: z.string(), sub: z.string().optional() }),
+  /** product in its everyday environment (vanity, workshop, desk …) */
+  lifestyle: SceneUse.optional(),
+  /** how it works / what is inside — an explanatory visual with pictogram labels */
+  ingredient: z
+    .object({
+      media: z.string(),
+      title: z.string().optional(),
+      chips: z
+        .array(z.object({ icon: IconKind, label: z.string(), at: Point }))
+        .min(1)
+        .max(3),
+      params: Params,
+      animate: Animate,
+    })
+    .optional(),
+  /** benefits as rapid cuts over changing imagery (never a static bullet slide) */
+  montage: z.object({ shots: z.array(MontageShot).min(2).max(4) }).optional(),
+  /** closing hero shot in a new setting */
+  heroReturn: z
+    .object({
+      media: z.string(),
+      title: z.string().optional(),
+      tagline: z.string().optional(),
+      params: Params,
+      animate: Animate,
+    })
+    .optional(),
+  cta: z.object({
+    headline: z.string(),
+    button: z.string(),
+    sub: z.string().optional(),
+    /** full-bleed scene behind the CTA instead of the kit background */
+    scene: z
+      .object({
+        media: z.string(),
+        focus: z.string().optional(),
+        zoom: z.number().positive().default(1.15),
+        params: Params,
+      })
+      .optional(),
+  }),
   /** on-screen disclosure from the brand's rules (affiliate content) */
   disclosure: z.string().optional(),
   /** labels used by numbered structures ("Feature", "Things to know") */

@@ -52,7 +52,7 @@ export interface ResolveResult {
   issues: ResolveIssue[];
 }
 
-const BALANCED: ReadonlySet<TextRole> = new Set(["DISPLAY", "HEADLINE", "CTA", "STAT"]);
+const BALANCED: ReadonlySet<TextRole> = new Set(["DISPLAY", "HEADLINE", "CTA", "STAT", "BODY"]);
 
 interface FitInput {
   id: string;
@@ -202,12 +202,23 @@ export function resolveRenderPlan(
         add(`${o.id}:${o.textSlot}`, {
           slot: o.textSlot,
           role: o.tone === "accent" && o.box.h >= 96 ? "CTA" : "CAPTION",
-          box: { x: o.box.x + 24, y: o.box.y + 8, w: o.box.w - 48, h: o.box.h - 16 },
+          // CTA buttons carry an arrow icon on the right
+          box:
+            o.tone === "accent" && o.box.h >= 96
+              ? { x: o.box.x + 28, y: o.box.y + 8, w: o.box.w - 28 - 84, h: o.box.h - 16 }
+              : { x: o.box.x + 24, y: o.box.y + 8, w: o.box.w - 48, h: o.box.h - 16 },
           maxLines: 1,
           align: "center",
           vAlign: "middle",
           delayMs: o.delayMs,
-          color: o.tone === "accent" ? "accentInk" : o.tone === "surface" ? "surfaceInk" : "ink",
+          color:
+            o.tone === "accent"
+              ? "accentInk"
+              : o.tone === "surface"
+                ? "surfaceInk"
+                : o.tone === "dark"
+                  ? "onMedia"
+                  : "ink",
         });
         break;
       case "counter": {
@@ -224,17 +235,31 @@ export function resolveRenderPlan(
           delayMs: o.delayMs,
           color: "ink",
         });
-        if (o.unitSlot)
+        if (o.unitSlot) {
+          // plain / bar: the unit reads with the number (≈40 % of its size), gauge: a label inside the dial
+          const numberSize = out[`${o.id}:number`]?.fontSize ?? 160;
+          const unitRole = o.style === "gauge" ? "SPEC" : "HEADLINE";
           add(`${o.id}:${o.unitSlot}`, {
             slot: o.unitSlot,
-            role: "SPEC",
-            box: geo.unit,
+            role: unitRole,
+            // units keep their case: Pa, mAh, kWh
+            font: { ...style.fonts[unitRole], transform: "none" },
+            box: o.style === "gauge" ? geo.unit : { ...geo.unit, h: Math.round(numberSize * 0.62) },
             maxLines: 1,
             align: o.style === "gauge" ? "center" : "left",
             vAlign: "top",
             delayMs: o.delayMs,
             color: "accent",
+            ...(o.style === "gauge"
+              ? {}
+              : {
+                  sizes: {
+                    min: Math.max(36, Math.round(numberSize * 0.28)),
+                    max: Math.round(numberSize * 0.42),
+                  },
+                }),
           });
+        }
         break;
       }
       case "spec_list": {
@@ -309,7 +334,8 @@ export function resolveRenderPlan(
           align: "left",
           vAlign: "middle",
           delayMs: o.delayMs,
-          color: "ink",
+          color: "onMedia",
+          surface: "chip",
           sizes: { min: 60, max: 120 },
         });
         if (o.labelSlot)
@@ -321,10 +347,24 @@ export function resolveRenderPlan(
             align: "left",
             vAlign: "bottom",
             delayMs: o.delayMs,
-            color: "accent",
+            color: "onMedia",
+            surface: "chip",
           });
         break;
       }
+      case "icon_chip":
+        add(`${o.id}:${o.textSlot}`, {
+          slot: o.textSlot,
+          role: "BODY",
+          box: { x: o.box.x + o.box.h + 4, y: o.box.y + 10, w: o.box.w - o.box.h - 28, h: o.box.h - 20 },
+          maxLines: 1,
+          align: "left",
+          vAlign: "middle",
+          delayMs: o.delayMs,
+          color: o.tone === "accent" ? "accentInk" : o.tone === "dark" ? "onMedia" : "surfaceInk",
+          sizes: { min: 30, max: Math.round(o.box.h * 0.42) },
+        });
+        break;
       case "slider":
       case "arrow":
       case "cursor":
@@ -397,7 +437,8 @@ export function resolveRenderPlan(
       if (t.lines.length) elements.push({ id: `${b.id}/${t.slot}`, rect: drawnBounds(t) });
     for (const [key, t] of Object.entries(b.overlayTexts))
       if (t.lines.length) elements.push({ id: `${b.id}/${key}`, rect: drawnBounds(t) });
-    for (const o of b.overlays) if (o.kind === "badge") elements.push({ id: `${b.id}/${o.id}`, rect: o.box });
+    for (const o of b.overlays)
+      if (o.kind === "badge" || o.kind === "icon_chip") elements.push({ id: `${b.id}/${o.id}`, rect: o.box });
   }
   if (disclosure) elements.push({ id: "global.disclosure", rect: drawnBounds(disclosure) });
   for (const v of checkSafeZones(elements, sb.platforms, sb.format)) {
@@ -443,6 +484,7 @@ export function overlaySlots(o: Overlay): string[] {
     case "callout":
     case "measure":
     case "badge":
+    case "icon_chip":
       return [o.textSlot];
     case "counter":
       return [o.unitSlot, o.labelSlot].filter((s): s is string => Boolean(s));

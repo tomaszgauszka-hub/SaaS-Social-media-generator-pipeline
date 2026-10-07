@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "demo": "tsx src/cli/demo.ts",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "benchmark": "tsx src/cli/creative-benchmark.ts"
   },
   "dependencies": {
     "@cre/config": "workspace:*",
@@ -16,6 +17,8 @@
     "@cre/db": "workspace:*",
     "@cre/pipeline": "workspace:*",
     "@cre/providers": "workspace:*",
-    "@cre/shared": "workspace:*"
+    "@cre/shared": "workspace:*",
+    "@cre/creative": "workspace:*",
+    "@cre/motion": "workspace:*"
   }
 }

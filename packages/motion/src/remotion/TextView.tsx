@@ -77,18 +77,24 @@ export const TextView: React.FC<{ plan: RenderPlan; text: ResolvedText; ms: numb
       {surface}
       {t.lines.map((line, i) => {
         const anim = lineAnim(t, i, local);
+        // the mask window extends above and below the line box: tight display line-heights must not crop glyphs
+        const mask = t.animation === "mask_up";
+        const padT = mask ? lineH * 0.32 : 0;
+        const padB = mask ? lineH * 0.26 : 0;
         return (
           <div
             key={i}
             style={{
               position: "absolute",
-              left: t.box.x,
-              top: top + i * lineH,
-              width: t.box.w,
-              height: lineH,
-              overflow: t.animation === "mask_up" ? "hidden" : "visible",
-              paddingBottom: t.animation === "mask_up" ? lineH * 0.18 : 0,
-              marginBottom: t.animation === "mask_up" ? -lineH * 0.18 : 0,
+              left: t.box.x - (mask ? 40 : 0),
+              top: top + i * lineH - padT,
+              width: t.box.w + (mask ? 80 : 0),
+              height: lineH + padT + padB,
+              overflow: mask ? "hidden" : "visible",
+              paddingTop: padT,
+              paddingLeft: mask ? 40 : 0,
+              paddingRight: mask ? 40 : 0,
+              boxSizing: "border-box",
             }}
           >
             <div
@@ -184,10 +190,14 @@ function renderSpans(
     const emphasis: React.CSSProperties = span.emphasis
       ? style === "industrial" || style === "racing"
         ? {
-            backgroundColor: p.accent,
+            // a marker band of fixed height — the inline content box of display fonts is taller than the line
+            backgroundImage: `linear-gradient(${p.accent}, ${p.accent})`,
+            backgroundSize: "100% 0.9em",
+            backgroundPosition: "0 58%",
+            backgroundRepeat: "no-repeat",
             color: p.accentInk,
-            padding: "0 0.07em",
-            margin: "0 -0.07em",
+            padding: "0 0.08em",
+            margin: "0 -0.08em",
             boxDecorationBreak: "clone",
             WebkitBoxDecorationBreak: "clone",
           }

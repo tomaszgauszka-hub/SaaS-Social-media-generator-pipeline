@@ -467,6 +467,7 @@ model Workspace {
   expenses          Expense[]
   credentials       ProviderCredential[]
   auditLogs         AuditLog[]
+  creativeRenders   CreativeRender[]
 }
 
 model Membership {
@@ -912,6 +913,7 @@ model ContentProject {
   clicks                Click[]
   conversions           Conversion[]
   revenueEntries        RevenueEntry[]
+  creativeRenders       CreativeRender[]
 
   @@index([brandId, status])
   @@index([workspaceId, status, updatedAt])
@@ -1001,6 +1003,8 @@ model Asset {
   variantMedia      VariantMedia[]
   usages            GenerationUsage[]
   jobs              GenerationJob[]
+  creativeVideoFor  CreativeRender[]  @relation("CreativeRenderVideo")
+  creativePosterFor CreativeRender[]  @relation("CreativeRenderPoster")
 
   @@index([projectId, kind])
   @@index([brandId, kind])
@@ -1565,4 +1569,92 @@ model ProviderCredential {
   socialAccounts SocialAccount[]
 
   @@index([workspaceId, provider])
+}
+
+// ─────────────────────────────────────────────────────────────── Creative Engine V2
+
+enum CreativeRenderStatus {
+  RENDERED
+  FAILED
+}
+
+enum QualityKind {
+  TECHNICAL
+  CREATIVE
+  FACTUAL
+  COMPLIANCE
+  LOCALIZATION
+}
+
+/// One local render of a creative storyboard (Remotion + FFmpeg). Benchmark renders have no project.
+/// The storyboard is renderer-independent JSON; hashes make renders reproducible and cacheable.
+model CreativeRender {
+  id               String               @id @default(cuid())
+  workspaceId      String
+  projectId        String?
+  storyboardId     String
+  title            String
+  category         String
+  structure        String
+  styleKit         String
+  locale           String               @default("en-US")
+  benchmark        Boolean              @default(false)
+  demoOnly         Boolean              @default(false)
+  placeholderMedia Boolean              @default(false)
+  status           CreativeRenderStatus @default(RENDERED)
+  durationMs       Int
+  beatCount        Int
+  width            Int
+  height           Int
+  fps              Int
+  storyboardHash   String
+  planHash         String
+  videoAssetId     String?
+  posterAssetId    String?
+  /// wall-clock milliseconds per stage (bundle cached separately)
+  renderMs         Int
+  audioMs          Int
+  finishMs         Int
+  qaMs             Int
+  renderFps        Float
+  /// AI usage for this render — the local renderer makes no model calls
+  aiTokens         Int                  @default(0)
+  aiCostUsd        Decimal              @default(0) @db.Decimal(12, 6)
+  externalCostUsd  Decimal              @default(0) @db.Decimal(12, 6)
+  rendererVersion  String
+  directorVersion  String
+  technicalStatus  String
+  technicalReport  Json
+  storyboard       Json
+  productionReady  Boolean              @default(false)
+  verdictLabel     String
+  verdict          Json
+  errorMessage     String?
+  createdAt        DateTime             @default(now())
+
+  workspace     Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project       ContentProject?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  videoAsset    Asset?                 @relation("CreativeRenderVideo", fields: [videoAssetId], references: [id], onDelete: SetNull)
+  posterAsset   Asset?                 @relation("CreativeRenderPoster", fields: [posterAssetId], references: [id], onDelete: SetNull)
+  qualityScores CreativeQualityScore[]
+
+  @@index([workspaceId, benchmark, createdAt])
+  @@index([storyboardId, createdAt])
+  @@index([projectId])
+}
+
+/// Separate quality reports per render (technical / creative / factual / compliance / localization).
+model CreativeQualityScore {
+  id        String      @id @default(cuid())
+  renderId  String
+  kind      QualityKind
+  score     Int
+  passed    Boolean
+  required  String
+  report    Json
+  createdAt DateTime    @default(now())
+
+  render CreativeRender @relation(fields: [renderId], references: [id], onDelete: Cascade)
+
+  @@unique([renderId, kind])
 }

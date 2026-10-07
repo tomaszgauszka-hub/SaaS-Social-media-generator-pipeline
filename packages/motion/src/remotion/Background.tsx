@@ -1,7 +1,7 @@
 import type { RenderPlan, ResolvedBeat } from "@cre/creative";
 import type React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
-import { mix, rgba, rng } from "./util.ts";
+import { isDark, mix, rgba, rng } from "./util.ts";
 
 /**
  * Persistent kit background (material cues per category, never a plain gradient card) with slow motion, plus
@@ -244,6 +244,15 @@ export const BeatBackground: React.FC<{ plan: RenderPlan; beat: ResolvedBeat; ms
         />
       );
     case "dark":
+      // light kits: a deeper tone of the kit, not black (dark ink must stay readable)
+      if (!isDark(p.bg))
+        return (
+          <AbsoluteFill
+            style={{
+              background: `radial-gradient(80% 55% at 50% 42%, ${mix(p.bg, "#ffffff", 0.35)} 0%, ${mix(p.bg2, "#000000", 0.1)} 100%)`,
+            }}
+          />
+        );
       return (
         <AbsoluteFill
           style={{

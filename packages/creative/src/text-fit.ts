@@ -54,21 +54,57 @@ export interface FitResult {
   issues: FitIssue[];
 }
 
-interface Word {
+interface Run {
   text: string;
   emphasis: boolean;
 }
 
-/** `*word*` → emphasis spans. Unbalanced markers are dropped rather than rendered. */
+/** A breakable unit: text between spaces, possibly mixing emphasis ("*tones*:" is one word). */
+interface Word {
+  text: string;
+  runs: Run[];
+}
+
+/** Standalone separators never start a line — they stay with the word before them. */
+const GLUE = /^[·•—–|/+&:;]+$/;
+
+/**
+ * `*word*` → emphasis runs. Markers toggle emphasis without splitting words; unbalanced markers are dropped
+ * rather than rendered.
+ */
 export function parseEmphasis(text: string): Word[] {
-  const parts = text.split("*");
-  const balanced = parts.length % 2 === 1;
+  const balanced = (text.split("*").length - 1) % 2 === 0;
   const words: Word[] = [];
-  parts.forEach((part, i) => {
-    const emphasis = balanced && i % 2 === 1;
-    for (const w of part.split(/\s+/)) if (w) words.push({ text: w, emphasis });
-  });
-  return words;
+  let emphasis = false;
+  let runs: Run[] = [];
+  let buf = "";
+  const flushRun = () => {
+    if (buf) runs.push({ text: buf, emphasis });
+    buf = "";
+  };
+  const flushWord = () => {
+    flushRun();
+    if (runs.length) words.push({ text: runs.map((r) => r.text).join(""), runs });
+    runs = [];
+  };
+  for (const ch of text) {
+    if (ch === "*") {
+      flushRun();
+      if (balanced) emphasis = !emphasis;
+    } else if (/\s/.test(ch)) flushWord();
+    else buf += ch;
+  }
+  flushWord();
+  // glue standalone separators to the previous word (break after "·", never before it)
+  const out: Word[] = [];
+  for (const w of words) {
+    const prev = out[out.length - 1];
+    if (prev && GLUE.test(w.text)) {
+      prev.runs.push({ text: " ", emphasis: prev.runs[prev.runs.length - 1]!.emphasis }, ...w.runs);
+      prev.text += ` ${w.text}`;
+    } else out.push({ text: w.text, runs: w.runs.map((r) => ({ ...r })) });
+  }
+  return out;
 }
 
 export function stripEmphasis(text: string): string {
@@ -161,20 +197,26 @@ function balanced(
 
 function toSpans(line: Word[]): TextSpan[] {
   const spans: TextSpan[] = [];
-  for (const [i, w] of line.entries()) {
-    const text = (i > 0 ? " " : "") + w.text;
+  const push = (text: string, emphasis: boolean) => {
     const last = spans[spans.length - 1];
-    if (last && last.emphasis === w.emphasis) last.text += text;
-    else spans.push({ text, emphasis: w.emphasis });
-  }
+    if (last && last.emphasis === emphasis) last.text += text;
+    else spans.push({ text, emphasis });
+  };
+  line.forEach((w, i) => {
+    w.runs.forEach((r, j) => {
+      // the space before a word takes the emphasis of the word's first run only if the previous span had it
+      if (i > 0 && j === 0) push(" ", spans[spans.length - 1]?.emphasis === true && r.emphasis);
+      push(r.text, r.emphasis);
+    });
+  });
   return spans;
 }
 
 export function fitText(m: TextMeasurer, req: FitRequest): FitResult {
   const step = req.step ?? 2;
   const words = parseEmphasis(req.text).map((w) => ({
-    ...w,
     text: applyTransform(w.text, req.font, req.locale),
+    runs: w.runs.map((r) => ({ ...r, text: applyTransform(r.text, req.font, req.locale) })),
   }));
   const issues: FitIssue[] = [];
   const empty = (size: number): FitResult => ({

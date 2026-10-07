@@ -164,6 +164,8 @@ export const MediaRole = z.enum([
   "background",
   "ui",
   "prop",
+  /** explanatory illustration (how it works, ingredient, mechanism) */
+  "diagram",
 ]);
 export type MediaRole = z.infer<typeof MediaRole>;
 
@@ -255,6 +257,23 @@ export type BeatMedia = z.infer<typeof BeatMedia>;
 /* ------------------------------------------------------------------ overlays -------------------- */
 
 const base = { id: z.string(), delayMs: z.number().int().min(0).default(0) };
+
+/** pictograms drawn by the renderer (no icon font, no external assets) */
+export const IconKind = z.enum([
+  "crystal",
+  "layers",
+  "sun",
+  "drop",
+  "leaf",
+  "shield",
+  "sparkle",
+  "feather",
+  "bag",
+  "clock",
+  "bolt",
+  "check",
+]);
+export type IconKind = z.infer<typeof IconKind>;
 
 export const Overlay = z.discriminatedUnion("kind", [
   /** pointer line from a point on the product to a label */
@@ -361,6 +380,15 @@ export const Overlay = z.discriminatedUnion("kind", [
     path: z.array(Point).min(2),
     clickAtMs: z.array(z.number().int().min(0)).default([]),
   }),
+  /** short label with a pictogram — benefits shown as visual callouts instead of a bullet list */
+  z.object({
+    ...base,
+    kind: z.literal("icon_chip"),
+    box: Rect,
+    icon: IconKind,
+    textSlot: z.string(),
+    tone: z.enum(["light", "dark", "accent"]).default("light"),
+  }),
   z.object({
     ...base,
     kind: z.literal("timer"),
@@ -390,7 +418,8 @@ export type TextAnimation = z.infer<typeof TextAnimation>;
 export const TextSurface = z.enum(["none", "scrim", "chip", "card", "marker"]);
 export type TextSurface = z.infer<typeof TextSurface>;
 
-export const TextColor = z.enum(["ink", "inkMuted", "accent", "surfaceInk", "accentInk"]);
+/** onMedia: white, for text set over photography / scenes (with a dark scrim) — readable in every kit */
+export const TextColor = z.enum(["ink", "inkMuted", "accent", "surfaceInk", "accentInk", "onMedia"]);
 export type TextColor = z.infer<typeof TextColor>;
 
 export const TextElement = z.object({

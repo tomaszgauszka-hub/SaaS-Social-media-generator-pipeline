@@ -49,7 +49,8 @@ interface MotionLook {
 function motionLook(m: BeatMedia, ms: number, beatMs: number, energy: number): MotionLook {
   const local = ms - m.enterMs;
   const t = clamp01(ms / Math.max(1, beatMs));
-  const look: MotionLook = { dx: 0, dy: 0, rotate: 0, opacity: local < 0 ? 0 : 1, blur: 0 };
+  // media that starts with the beat is visible during the incoming transition too
+  const look: MotionLook = { dx: 0, dy: 0, rotate: 0, opacity: m.enterMs > 0 && local < 0 ? 0 : 1, blur: 0 };
   switch (m.motion) {
     case "whip_in": {
       const p = prog(local, 0, 360, ease.outQuint);

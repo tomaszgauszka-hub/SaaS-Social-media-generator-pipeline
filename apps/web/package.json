@@ -15,6 +15,7 @@
     "@cre/analytics": "workspace:*",
     "@cre/config": "workspace:*",
     "@cre/core": "workspace:*",
+    "@cre/creative": "workspace:*",
     "@cre/db": "workspace:*",
     "@cre/providers": "workspace:*",
     "@cre/publishing": "workspace:*",

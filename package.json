@@ -32,7 +32,8 @@
     "db:reset": "pnpm --filter @cre/db reset",
     "services:up": "docker compose up -d",
     "services:down": "docker compose down",
-    "check": "pnpm typecheck && pnpm lint && pnpm test"
+    "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "creative:benchmark": "pnpm --filter @cre/worker benchmark"
   },
   "devDependencies": {
     "@cre/config": "workspace:*",

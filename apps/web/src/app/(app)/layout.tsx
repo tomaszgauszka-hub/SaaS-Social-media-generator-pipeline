@@ -25,6 +25,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     { href: "/revenue", label: "Revenue", icon: "€" },
     { href: "/brands", label: "Brands", icon: "★" },
     { href: "/products", label: "Products", icon: "▤" },
+    { href: "/creative-benchmark", label: "Creative lab", icon: "◆" },
     { href: "/jobs", label: "Jobs", icon: "⚙", badge: failedJobs },
     { href: "/settings/providers", label: "Settings", icon: "⚑" },
   ];

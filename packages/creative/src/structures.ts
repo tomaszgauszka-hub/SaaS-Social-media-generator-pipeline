@@ -20,6 +20,10 @@ export type RecipeStep =
   | "SCREEN"
   | "STEPS"
   | "RECAP"
+  | "LIFESTYLE"
+  | "INGREDIENT"
+  | "MONTAGE"
+  | "HERO_RETURN"
   | "CTA";
 
 export interface StructureRecipe {
@@ -105,9 +109,10 @@ export const STRUCTURES: Record<CreativeStructure, StructureRecipe> = {
   },
   TEST_RESULT: {
     structure: "TEST_RESULT",
-    description: "Set up a test, run it, show the measured result",
+    // in production only with a real test behind it (no fabricated product experiences, spec §57)
+    description: "Set up a demonstration, run it, show the visible result",
     steps: ["HOOK", "HERO", "IN_USE", "STAT", "CALLOUTS", "BEFORE_AFTER", "CTA"],
-    required: ["HOOK", "DEMO", "PROOF", "CTA"],
+    required: ["HOOK", "DEMO", "COMPARISON", "CTA"],
   },
   QUESTION_HOOK: {
     structure: "QUESTION_HOOK",
@@ -128,3 +133,14 @@ export const FILLER_STEPS: RecipeStep[] = ["CALLOUTS", "MACRO", "STAT", "IN_USE"
 
 export const MIN_BEATS = 6;
 export const MAX_BEATS = 10;
+
+/**
+ * Niche shot grammars (spec §30): the same commercial structure is told with different shots per category —
+ * beauty leads with a lit hero, packaging macros, the product in its ritual, texture and ingredient visuals and
+ * a benefit montage; never a feature slide. Kits without a grammar use the structure's generic recipe.
+ */
+export const SHOT_GRAMMARS: Partial<Record<string, Partial<Record<CreativeStructure, RecipeStep[]>>>> = {
+  beauty: {
+    PRODUCT_HERO: ["HOOK", "MACRO", "LIFESTYLE", "INGREDIENT", "IN_USE", "MONTAGE", "HERO_RETURN", "CTA"],
+  },
+};
