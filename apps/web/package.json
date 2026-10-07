@@ -1,0 +1,32 @@
+{
+  "name": "@cre/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dashboard, approval UI, tracking redirects, webhooks and OAuth callbacks",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@cre/analytics": "workspace:*",
+    "@cre/config": "workspace:*",
+    "@cre/core": "workspace:*",
+    "@cre/db": "workspace:*",
+    "@cre/publishing": "workspace:*",
+    "@cre/shared": "workspace:*",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "postcss": "8.5.29",
+    "tailwindcss": "4.3.3"
+  }
+}

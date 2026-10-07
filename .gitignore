@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# build output
+.next/
+dist/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# generated
+packages/db/src/generated/
+
+# local data (storage, renders, caches)
+.data/
+tmp/
+
+# logs & OS
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/

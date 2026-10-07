@@ -1,0 +1,16 @@
+{
+  "name": "@cre/analytics",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pure metric math, aggregation and performance profile extraction",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@cre/shared": "workspace:*"
+  }
+}

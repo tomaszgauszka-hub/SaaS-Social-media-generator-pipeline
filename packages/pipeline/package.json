@@ -1,0 +1,26 @@
+{
+  "name": "@cre/pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pipeline step executors, job runner and dispatchers",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@cre/shared": "workspace:*",
+    "@cre/config": "workspace:*",
+    "@cre/db": "workspace:*",
+    "@cre/analytics": "workspace:*",
+    "@cre/core": "workspace:*",
+    "@cre/ai": "workspace:*",
+    "@cre/media": "workspace:*",
+    "@cre/providers": "workspace:*",
+    "@cre/publishing": "workspace:*",
+    "zod": "4.6.5",
+    "bullmq": "5.81.5"
+  }
+}

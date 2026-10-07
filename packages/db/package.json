@@ -1,0 +1,32 @@
+{
+  "name": "@cre/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prisma schema, migrations, client and seed",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./enums": "./src/enums.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "reset": "prisma migrate reset --force",
+    "seed": "tsx src/seed/index.ts",
+    "studio": "prisma studio"
+  },
+  "dependencies": {
+    "@cre/shared": "workspace:*",
+    "@cre/config": "workspace:*",
+    "@prisma/client": "7.10.0",
+    "@prisma/adapter-pg": "7.10.0",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "prisma": "7.10.0",
+    "@types/pg": "8.23.1"
+  }
+}

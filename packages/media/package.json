@@ -1,0 +1,17 @@
+{
+  "name": "@cre/media",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FFmpeg timeline compositor, typography, probes, programmatic media",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@cre/shared": "workspace:*",
+    "zod": "4.6.5"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "@cre/ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LLM providers, versioned prompts, structured generation",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@cre/shared": "workspace:*",
+    "@cre/config": "workspace:*",
+    "zod": "4.6.5"
+  }
+}

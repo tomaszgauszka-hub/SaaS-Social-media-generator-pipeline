@@ -1,0 +1,1564 @@
+// Content Revenue Engine — PostgreSQL schema (Prisma 7)
+//
+// Conventions
+//  * money: Decimal(18,6) USD. Revenue keeps original currency + fx rate + USD amount.
+//  * estimates (OpportunityScore, estimatedCostUsd) are stored separately from actuals
+//    (AnalyticsSnapshot, RevenueEntry, actualCostUsd).
+//  * workflow state is an explicit enum per entity — never boolean flags.
+//  * media files live in object storage; rows store keys + provenance only.
+//  * isMock / isSimulated mark data produced by mock providers so it is never mistaken for real money.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum BrandStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum Platform {
+  INSTAGRAM
+  FACEBOOK
+  TIKTOK
+  YOUTUBE
+  PINTEREST
+  X
+  LINKEDIN
+  BLOG
+  NEWSLETTER
+}
+
+enum SocialAccountStatus {
+  MOCK
+  CONNECTED
+  NEEDS_REAUTH
+  DISCONNECTED
+}
+
+enum MonetizationModel {
+  AFFILIATE
+  LEAD_GENERATION
+  SERVICE
+  OWN_PRODUCT
+  DIGITAL_PRODUCT
+  SPONSORED
+  TRAFFIC_ARBITRAGE
+}
+
+enum ProductKind {
+  PRODUCT
+  SERVICE
+  DIGITAL_PRODUCT
+  OWN_PRODUCT
+  LEAD_MAGNET
+}
+
+enum ProductStatus {
+  ACTIVE
+  PAUSED
+  OUT_OF_STOCK
+  ARCHIVED
+}
+
+enum DataSource {
+  MANUAL
+  CSV
+  API
+  FEED
+  SCRAPE
+  AFFILIATE_NETWORK
+  SEED
+}
+
+enum RedirectPolicy {
+  REDIRECT_ALLOWED
+  DIRECT_LINK_ONLY
+}
+
+enum OfferStatus {
+  ACTIVE
+  PAUSED
+  EXPIRED
+}
+
+enum ContentFormat {
+  SHORT_VIDEO
+  STATIC_POST
+  CAROUSEL
+  TEXT_POST
+}
+
+enum EconomicOutcome {
+  AFFILIATE_CLICK
+  LEAD
+  SALE
+  SERVICE_INQUIRY
+  EMAIL_SIGNUP
+}
+
+enum IdeaStatus {
+  PROPOSED
+  SELECTED
+  DISCARDED
+}
+
+enum ContentStatus {
+  IDEA
+  RESEARCHING
+  SCRIPTING
+  ASSET_PLANNING
+  GENERATING_ASSETS
+  RENDERING
+  QA
+  WAITING_APPROVAL
+  APPROVED
+  REJECTED
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  ANALYTICS_PENDING
+  BUDGET_BLOCKED
+  ARCHIVED
+}
+
+enum QualityLevel {
+  DRAFT
+  STANDARD
+  PREMIUM
+}
+
+enum GenerationTier {
+  TIER_0
+  TIER_1
+  TIER_2
+  TIER_3
+}
+
+enum SceneKind {
+  HOOK
+  PROBLEM
+  PRODUCT
+  AI_SHOT
+  DEMO
+  BENEFITS
+  COMPARISON
+  OFFER
+  CTA
+  GENERIC
+}
+
+enum AssetKind {
+  IMAGE
+  PRODUCT_IMAGE
+  PRODUCT_CUTOUT
+  BACKGROUND
+  VIDEO_CLIP
+  VOICEOVER
+  MUSIC
+  SFX
+  SUBTITLES
+  RENDERED_VIDEO
+  RENDERED_IMAGE
+  THUMBNAIL
+  LOGO
+  SCREENSHOT
+}
+
+enum AssetStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
+}
+
+enum AssetOrigin {
+  GENERATED
+  UPLOADED
+  PRODUCT_SOURCE
+  STOCK
+  PROGRAMMATIC
+  RENDERED
+  DERIVED
+}
+
+enum VariantStatus {
+  PENDING
+  READY
+  APPROVED
+  REJECTED
+  SKIPPED
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  ARCHIVED
+}
+
+enum VariantPlacement {
+  REEL
+  FEED
+  STORY
+  CAROUSEL
+  TEXT
+}
+
+enum VariantMediaRole {
+  VIDEO
+  COVER
+  IMAGE
+  SLIDE
+}
+
+enum ExperimentVariable {
+  HOOK
+  CTA
+  CAPTION
+  COVER
+  FIRST_3S
+}
+
+enum ExperimentStatus {
+  RUNNING
+  CONCLUDED
+  CANCELLED
+}
+
+enum JobStatus {
+  QUEUED
+  DISPATCHED
+  RUNNING
+  SUCCEEDED
+  RETRYING
+  FAILED
+  DEAD_LETTER
+  BUDGET_BLOCKED
+  CANCELLED
+}
+
+enum JobEventType {
+  DISPATCH
+  START
+  SUCCESS
+  FAILURE
+  RETRY
+  COST
+  INFO
+  WARN
+  BUDGET_BLOCKED
+}
+
+enum RunTrigger {
+  STRATEGY
+  MANUAL
+  REGENERATION
+  RETRY
+}
+
+enum RunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  BUDGET_BLOCKED
+  CANCELLED
+}
+
+enum UsageOperation {
+  LLM_COMPLETION
+  IMAGE_GENERATION
+  BACKGROUND_REMOVAL
+  VIDEO_GENERATION
+  TTS
+  OTHER
+}
+
+enum UsageStatus {
+  RESERVED
+  COMMITTED
+  RELEASED
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+  REGENERATE
+  EDITED
+  AUTO_REJECTED
+}
+
+enum RejectionReason {
+  WEAK_HOOK
+  BAD_IMAGE
+  BAD_VIDEO
+  INCORRECT_PRODUCT
+  BAD_VOICE
+  BAD_CTA
+  FACTUAL_PROBLEM
+  QA_FAILED
+  OTHER
+}
+
+enum RegenerationScope {
+  ENTIRE
+  SCRIPT
+  HOOK
+  IMAGE
+  VIDEO_SCENE
+  VOICE
+  CAPTION
+}
+
+enum PublicationStatus {
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+enum MetricsSource {
+  PLATFORM_API
+  MOCK
+  MANUAL
+}
+
+enum ConversionType {
+  LEAD
+  SALE
+  SIGNUP
+  INQUIRY
+  INSTALL
+  OTHER
+}
+
+enum ConversionStatus {
+  PENDING
+  APPROVED
+  REVERSED
+}
+
+enum RevenueKind {
+  COMMISSION
+  SALE
+  LEAD_FEE
+  SPONSORSHIP
+  ADJUSTMENT
+  OTHER
+}
+
+enum ExpenseCategory {
+  INFRASTRUCTURE
+  ADS
+  TOOLS
+  OTHER
+}
+
+enum DisclosureKind {
+  AFFILIATE
+  AD
+  SPONSORED
+  AI_GENERATED
+}
+
+enum DisclosurePlacement {
+  CAPTION_START
+  CAPTION_END
+  ON_SCREEN
+  CAPTION_AND_ON_SCREEN
+}
+
+enum TemplateKind {
+  VIDEO
+  STATIC
+  CAROUSEL
+}
+
+enum CredentialKind {
+  API_KEY
+  OAUTH_TOKEN
+}
+
+enum CredentialStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  ERROR
+}
+
+enum AuditActor {
+  USER
+  SYSTEM
+  WORKER
+}
+
+// ============================================================================
+// Identity & tenancy
+// ============================================================================
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String?
+  passwordHash String
+  lastLoginAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  memberships  Membership[]
+  sessions     Session[]
+  approvals    Approval[]
+  auditLogs    AuditLog[]
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Workspace {
+  id                String               @id @default(cuid())
+  name              String
+  slug              String               @unique
+  timezone          String               @default("UTC")
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  memberships       Membership[]
+  brands            Brand[]
+  socialAccounts    SocialAccount[]
+  affiliatePrograms AffiliateProgram[]
+  products          Product[]
+  ideas             ContentIdea[]
+  projects          ContentProject[]
+  assets            Asset[]
+  templates         Template[]
+  runs              PipelineRun[]
+  jobs              GenerationJob[]
+  usages            GenerationUsage[]
+  budgets           Budget[]
+  publications      Publication[]
+  trackedLinks      TrackedLink[]
+  clicks            Click[]
+  conversions       Conversion[]
+  revenueEntries    RevenueEntry[]
+  expenses          Expense[]
+  credentials       ProviderCredential[]
+  auditLogs         AuditLog[]
+}
+
+model Membership {
+  id          String        @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        WorkspaceRole @default(OWNER)
+  createdAt   DateTime      @default(now())
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+// ============================================================================
+// Brand
+// ============================================================================
+
+model Brand {
+  id                  String                    @id @default(cuid())
+  workspaceId         String
+  name                String
+  slug                String
+  description         String?
+  niche               String
+  targetAudience      String
+  language            String                    @default("en")
+  countries           String[]
+  toneOfVoice         String
+  timezone            String                    @default("UTC")
+  /// { primary, secondary, accent, text, background } hex colours
+  colors              Json
+  /// { headingFont, bodyFont }
+  typography          Json
+  ctaStyles           String[]
+  contentRules        String[]
+  bannedWords         String[]
+  complianceNotes     String?
+  monetizationModels  MonetizationModel[]
+  targetPlatforms     Platform[]
+  status              BrandStatus               @default(ACTIVE)
+  logoAssetId         String?                   @unique
+  qaThreshold         Int                       @default(70)
+  maxTier             GenerationTier            @default(TIER_1)
+  allowAiVideo        Boolean                   @default(true)
+  ttsEnabled          Boolean                   @default(false)
+  voiceId             String?
+  experimentsEnabled  Boolean                   @default(false)
+  autoIdeationEnabled Boolean                   @default(false)
+  ideasPerCycle       Int                       @default(2)
+  defaultTemplateKey  String                    @default("vertical-bold")
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  workspace           Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  logoAsset           Asset?                    @relation("BrandLogo", fields: [logoAssetId], references: [id], onDelete: SetNull)
+  assets              Asset[]                   @relation("BrandAssets")
+  socialAccounts      SocialAccount[]
+  publishingSlots     PublishingSlot[]
+  disclosureRules     DisclosureRule[]
+  templates           Template[]
+  products            Product[]
+  ideas               ContentIdea[]
+  projects            ContentProject[]
+  performanceProfiles BrandPerformanceProfile[]
+  budget              Budget?
+  runs                PipelineRun[]
+  jobs                GenerationJob[]
+  usages              GenerationUsage[]
+  publications        Publication[]
+  trackedLinks        TrackedLink[]
+  clicks              Click[]
+  conversions         Conversion[]
+  revenueEntries      RevenueEntry[]
+  expenses            Expense[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, status])
+}
+
+model SocialAccount {
+  id                String              @id @default(cuid())
+  workspaceId       String
+  brandId           String
+  platform          Platform
+  handle            String
+  displayName       String?
+  /// IG user id, FB page id, TikTok open_id …
+  externalAccountId String?
+  credentialId      String?
+  status            SocialAccountStatus @default(MOCK)
+  isMock            Boolean             @default(true)
+  metadata          Json?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand             Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  credential        ProviderCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  publishingSlots   PublishingSlot[]
+  publications      Publication[]
+
+  @@unique([brandId, platform, handle])
+  @@index([workspaceId])
+}
+
+/// Recurring publication slot, e.g. "TikTok every day at 12:00 brand time".
+model PublishingSlot {
+  id              String         @id @default(cuid())
+  brandId         String
+  platform        Platform
+  socialAccountId String?
+  /// 0 = Sunday … 6 = Saturday; null = every day
+  dayOfWeek       Int?
+  /// "HH:mm" in the brand time zone
+  timeOfDay       String
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  brand           Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  socialAccount   SocialAccount? @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+
+  @@index([brandId, platform])
+}
+
+/// Per-brand / per-platform disclosure requirements ("#ad", "affiliate link", AI label …).
+model DisclosureRule {
+  id           String              @id @default(cuid())
+  brandId      String
+  /// null = applies to every platform
+  platform     Platform?
+  kind         DisclosureKind
+  text         String
+  placement    DisclosurePlacement @default(CAPTION_START)
+  isRequired   Boolean             @default(true)
+  jurisdiction String?
+  notes        String?
+  createdAt    DateTime            @default(now())
+  brand        Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+}
+
+/// Branded render template (layout, typography, motion presets). scope = "system" or a brand id.
+model Template {
+  id          String           @id @default(cuid())
+  workspaceId String?
+  brandId     String?
+  scope       String           @default("system")
+  key         String
+  name        String
+  kind        TemplateKind
+  version     Int              @default(1)
+  spec        Json
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  workspace   Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand       Brand?           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  projects    ContentProject[]
+
+  @@unique([scope, key, version])
+}
+
+/// Learned performance summary fed into generation prompts (versioned, never overwritten).
+model BrandPerformanceProfile {
+  id          String   @id @default(cuid())
+  brandId     String
+  version     Int
+  windowStart DateTime
+  windowEnd   DateTime
+  sampleSize  Int
+  summary     Json
+  promptText  String
+  createdAt   DateTime @default(now())
+  brand       Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, version])
+}
+
+// ============================================================================
+// Commerce: affiliate programs, products, offers, links
+// ============================================================================
+
+model AffiliateProgram {
+  id                    String          @id @default(cuid())
+  workspaceId           String
+  name                  String
+  /// amazon | impact | awin | cj | partnerstack | custom …
+  network               String
+  website               String?
+  /// fraction, 0.0400 = 4 %
+  defaultCommissionRate Decimal?        @db.Decimal(7, 4)
+  cookieDays            Int?
+  redirectPolicy        RedirectPolicy  @default(REDIRECT_ALLOWED)
+  /// query parameter that carries our click id to the network (e.g. subid, u1, ascsubtag)
+  subIdParam            String?
+  disclosureText        String?
+  /// sha256 of the per-program webhook/postback secret
+  postbackSecretHash    String?
+  /// maps webhook payload fields → conversion fields
+  conversionFieldMap    Json?
+  termsNotes            String?
+  isActive              Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  workspace             Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  offers                Offer[]
+  affiliateLinks        AffiliateLink[]
+  conversions           Conversion[]
+
+  @@unique([workspaceId, name])
+}
+
+model Product {
+  id                  String           @id @default(cuid())
+  workspaceId         String
+  brandId             String
+  kind                ProductKind      @default(PRODUCT)
+  title               String
+  description         String?
+  manufacturer        String?
+  sku                 String?
+  source              DataSource       @default(MANUAL)
+  sourceUrl           String?
+  sourceRef           String?
+  productUrl          String?
+  imageUrls           String[]
+  price               Decimal?         @db.Decimal(12, 2)
+  currency            String           @default("USD")
+  priceCheckedAt      DateTime?
+  category            String?
+  /// fraction, 0.0400 = 4 %
+  commissionRate      Decimal?         @db.Decimal(7, 4)
+  commissionFixedUsd  Decimal?         @db.Decimal(12, 2)
+  affiliateUrl        String?
+  trackingId          String?
+  tags                String[]
+  /// Verified product facts: [{ id, claim, source, verifiedAt }]. Generation may only use these claims.
+  facts               Json             @default("[]")
+  status              ProductStatus    @default(ACTIVE)
+  primaryImageAssetId String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  workspace           Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand               Brand            @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  primaryImageAsset   Asset?           @relation("ProductPrimaryImage", fields: [primaryImageAssetId], references: [id], onDelete: SetNull)
+  assets              Asset[]          @relation("ProductAssets")
+  offers              Offer[]
+  affiliateLinks      AffiliateLink[]
+  ideas               ContentIdea[]
+  projects            ContentProject[]
+  trackedLinks        TrackedLink[]
+  clicks              Click[]
+  conversions         Conversion[]
+  revenueEntries      RevenueEntry[]
+
+  @@unique([brandId, sku])
+  @@index([workspaceId, status])
+  @@index([brandId, status])
+}
+
+/// Commercial terms for a product through a program (price, commission, validity, landing page).
+model Offer {
+  id                 String            @id @default(cuid())
+  productId          String
+  affiliateProgramId String?
+  title              String?
+  price              Decimal?          @db.Decimal(12, 2)
+  currency           String            @default("USD")
+  commissionRate     Decimal?          @db.Decimal(7, 4)
+  commissionFixedUsd Decimal?          @db.Decimal(12, 2)
+  landingUrl         String
+  validFrom          DateTime?
+  validTo            DateTime?
+  status             OfferStatus       @default(ACTIVE)
+  isPrimary          Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  product            Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  affiliateProgram   AffiliateProgram? @relation(fields: [affiliateProgramId], references: [id], onDelete: SetNull)
+  affiliateLinks     AffiliateLink[]
+  ideas              ContentIdea[]
+  projects           ContentProject[]
+
+  @@index([productId, status])
+}
+
+/// The actual monetized destination URL (deep link) for an offer.
+model AffiliateLink {
+  id                 String            @id @default(cuid())
+  productId          String
+  offerId            String?
+  affiliateProgramId String?
+  url                String
+  trackingId         String?
+  subIdParam         String?
+  region             String?
+  status             OfferStatus       @default(ACTIVE)
+  createdAt          DateTime          @default(now())
+  product            Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  offer              Offer?            @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  affiliateProgram   AffiliateProgram? @relation(fields: [affiliateProgramId], references: [id], onDelete: SetNull)
+  trackedLinks       TrackedLink[]
+
+  @@index([productId])
+}
+
+// ============================================================================
+// Content: idea → project (master creative) → scenes/assets → platform variants
+// ============================================================================
+
+model ContentIdea {
+  id              String            @id @default(cuid())
+  workspaceId     String
+  brandId         String
+  productId       String?
+  offerId         String?
+  title           String
+  angle           String
+  hook            String?
+  summary         String?
+  format          ContentFormat     @default(SHORT_VIDEO)
+  economicOutcome EconomicOutcome   @default(AFFILIATE_CLICK)
+  targetAudience  String?
+  rationale       String?
+  riskNotes       String?
+  status          IdeaStatus        @default(PROPOSED)
+  /// strategy_engine | manual
+  source          String            @default("strategy_engine")
+  promptVersionId String?
+  createdAt       DateTime          @default(now())
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand           Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  product         Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  offer           Offer?            @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  promptVersion   PromptVersion?    @relation(fields: [promptVersionId], references: [id], onDelete: SetNull)
+  score           OpportunityScore?
+  projects        ContentProject[]
+
+  @@index([brandId, createdAt])
+  @@index([brandId, status])
+}
+
+/// ESTIMATES ONLY. Real performance lives in AnalyticsSnapshot / Click / Conversion / RevenueEntry.
+model OpportunityScore {
+  id                     String      @id @default(cuid())
+  ideaId                 String      @unique
+  totalScore             Float
+  expectedCtr            Float
+  expectedConversionRate Float
+  expectedImpressions    Int
+  estimatedRevenueUsd    Decimal     @db.Decimal(18, 6)
+  estimatedCostUsd       Decimal     @db.Decimal(18, 6)
+  expectedProfitUsd      Decimal     @db.Decimal(18, 6)
+  novelty                Float
+  relevance              Float
+  similarity             Float
+  commissionScore        Float
+  confidence             Float
+  factors                Json
+  /// scoring model version, e.g. heuristic-v1
+  model                  String
+  createdAt              DateTime    @default(now())
+  idea                   ContentIdea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+}
+
+/// The master creative. Flows through the ContentStatus state machine.
+model ContentProject {
+  id                    String            @id @default(cuid())
+  workspaceId           String
+  brandId               String
+  ideaId                String?
+  productId             String?
+  offerId               String?
+  templateId            String?
+  format                ContentFormat     @default(SHORT_VIDEO)
+  status                ContentStatus     @default(IDEA)
+  statusChangedAt       DateTime          @default(now())
+  /// state to resume at after FAILED / BUDGET_BLOCKED
+  resumeStatus          ContentStatus?
+  failureReason         String?
+  /// BudgetBlockReason[] when BUDGET_BLOCKED
+  blockedReasons        Json?
+  economicOutcome       EconomicOutcome   @default(AFFILIATE_CLICK)
+  requestedQuality      QualityLevel      @default(STANDARD)
+  tier                  GenerationTier?
+  /// MediaGenerationRouter output incl. reasons
+  routerDecision        Json?
+  title                 String
+  angle                 String?
+  language              String            @default("en")
+  hook                  String?
+  hookStyle             String?
+  cta                   String?
+  ctaType               String?
+  caption               String?
+  hashtags              String[]
+  researchBrief         Json?
+  /// validated structured LLM output
+  script                Json?
+  visualPlan            Json?
+  commercialIntent      String?
+  confidence            Float?
+  targetDurationMs      Int?
+  durationMs            Int?
+  /// last VideoProject JSON rendered (reproducible render input)
+  renderSpec            Json?
+  masterAssetId         String?
+  coverAssetId          String?
+  qaScore               Int?
+  qaPassed              Boolean?
+  qaReport              Json?
+  costEstimateUsd       Decimal?          @db.Decimal(18, 6)
+  revision              Int               @default(1)
+  regenerationCount     Int               @default(0)
+  /// contains realistic AI-generated imagery/video → platform AI label
+  aiGenerated           Boolean           @default(false)
+  scriptPromptVersionId String?
+  approvedAt            DateTime?
+  approvedById          String?
+  publishedAt           DateTime?
+  archivedAt            DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  workspace             Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand                 Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  idea                  ContentIdea?      @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  product               Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  offer                 Offer?            @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  template              Template?         @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  masterAsset           Asset?            @relation("ProjectMasterAsset", fields: [masterAssetId], references: [id], onDelete: SetNull)
+  coverAsset            Asset?            @relation("ProjectCoverAsset", fields: [coverAssetId], references: [id], onDelete: SetNull)
+  scriptPromptVersion   PromptVersion?    @relation(fields: [scriptPromptVersionId], references: [id], onDelete: SetNull)
+  scenes                Scene[]
+  assets                Asset[]           @relation("ProjectAssets")
+  variants              ContentVariant[]
+  experiments           Experiment[]
+  approvals             Approval[]
+  runs                  PipelineRun[]
+  jobs                  GenerationJob[]
+  usages                GenerationUsage[]
+  trackedLinks          TrackedLink[]
+  clicks                Click[]
+  conversions           Conversion[]
+  revenueEntries        RevenueEntry[]
+
+  @@index([brandId, status])
+  @@index([workspaceId, status, updatedAt])
+  @@index([status, statusChangedAt])
+}
+
+model Scene {
+  id                String         @id @default(cuid())
+  projectId         String
+  index             Int
+  kind              SceneKind
+  durationMs        Int
+  onScreenText      String?
+  voiceoverText     String?
+  /// product_image | generated_image | ai_video | text_card | screenshot
+  visualType        String
+  visualDescription String?
+  imagePrompt       String?
+  /// kenburns | zoom_in | zoom_out | pan_left | pan_right | pan_up | parallax | static
+  motion            String?
+  /// fade | slideleft | slideup | wipeleft | circleopen | cut …
+  transition        String?
+  primaryAssetId    String?
+  revision          Int            @default(1)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  project           ContentProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  primaryAsset      Asset?         @relation("ScenePrimaryAsset", fields: [primaryAssetId], references: [id], onDelete: SetNull)
+  assets            Asset[]        @relation("SceneAssets")
+
+  @@unique([projectId, index])
+}
+
+/// Every generated / imported / rendered media file with full provenance.
+model Asset {
+  id                String            @id @default(cuid())
+  workspaceId       String
+  brandId           String?
+  projectId         String?
+  sceneId           String?
+  productId         String?
+  kind              AssetKind
+  status            AssetStatus       @default(PENDING)
+  origin            AssetOrigin
+  storageKey        String?
+  mimeType          String?
+  width             Int?
+  height            Int?
+  durationMs        Int?
+  sizeBytes         Int?
+  /// sha256 of file contents
+  checksum          String?
+  provider          String?
+  model             String?
+  prompt            String?
+  negativePrompt    String?
+  params            Json?
+  seed              Int?
+  /// async provider request id — lets a restarted worker poll instead of paying twice
+  externalJobId     String?
+  generationCostUsd Decimal?          @db.Decimal(18, 6)
+  isMock            Boolean           @default(false)
+  sourceUrl         String?
+  /// generated | product-feed | royalty-free | own | procedural | licensed:<id>
+  license           String?
+  licenseMetadata   Json?
+  /// e.g. TTS word timings, render statistics
+  metadata          Json?
+  /// content hash of generation inputs; READY assets with the same key are reused
+  idempotencyKey    String            @unique
+  revision          Int               @default(1)
+  errorMessage      String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand             Brand?            @relation("BrandAssets", fields: [brandId], references: [id], onDelete: Cascade)
+  project           ContentProject?   @relation("ProjectAssets", fields: [projectId], references: [id], onDelete: Cascade)
+  scene             Scene?            @relation("SceneAssets", fields: [sceneId], references: [id], onDelete: SetNull)
+  product           Product?          @relation("ProductAssets", fields: [productId], references: [id], onDelete: SetNull)
+  inputs            AssetInput[]      @relation("AssetInputs")
+  usedAsInputFor    AssetInput[]      @relation("AssetInputOf")
+  brandLogoFor      Brand?            @relation("BrandLogo")
+  productPrimaryFor Product[]         @relation("ProductPrimaryImage")
+  sceneFor          Scene[]           @relation("ScenePrimaryAsset")
+  projectMasterFor  ContentProject[]  @relation("ProjectMasterAsset")
+  projectCoverFor   ContentProject[]  @relation("ProjectCoverAsset")
+  variantMedia      VariantMedia[]
+  usages            GenerationUsage[]
+  jobs              GenerationJob[]
+
+  @@index([projectId, kind])
+  @@index([brandId, kind])
+  @@index([productId])
+}
+
+/// Asset lineage: which inputs an asset was derived from (cutout ← product photo, render ← scenes …).
+model AssetInput {
+  assetId      String
+  inputAssetId String
+  role         String
+  asset        Asset  @relation("AssetInputs", fields: [assetId], references: [id], onDelete: Cascade)
+  inputAsset   Asset  @relation("AssetInputOf", fields: [inputAssetId], references: [id], onDelete: Cascade)
+
+  @@id([assetId, inputAssetId, role])
+  @@index([inputAssetId])
+}
+
+/// Platform-specific adaptation of a master creative (caption, hashtags, disclosure, tracked link, media).
+model ContentVariant {
+  id             String           @id @default(cuid())
+  projectId      String
+  platform       Platform
+  placement      VariantPlacement @default(REEL)
+  status         VariantStatus    @default(PENDING)
+  /// experiment arm ("A" = control)
+  armKey         String           @default("A")
+  caption        String?
+  hashtags       String[]
+  disclosureText String?
+  firstComment   String?
+  /// on-screen overrides for experiment arms: { hook?, cta? }
+  overrides      Json?
+  qaScore        Int?
+  qaIssues       Json?
+  aiGenerated    Boolean          @default(false)
+  trackedLinkId  String?          @unique
+  experimentId   String?
+  approvedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  project        ContentProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  trackedLink    TrackedLink?     @relation("VariantTrackedLink", fields: [trackedLinkId], references: [id], onDelete: SetNull)
+  experiment     Experiment?      @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  media          VariantMedia[]
+  publications   Publication[]
+  approvals      Approval[]
+  clicks         Click[]
+  conversions    Conversion[]
+  revenueEntries RevenueEntry[]
+
+  @@unique([projectId, platform, armKey])
+  @@index([status])
+}
+
+model VariantMedia {
+  id        String           @id @default(cuid())
+  variantId String
+  assetId   String
+  role      VariantMediaRole
+  position  Int              @default(0)
+  variant   ContentVariant   @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  asset     Asset            @relation(fields: [assetId], references: [id], onDelete: Restrict)
+
+  @@unique([variantId, role, position])
+  @@index([assetId])
+}
+
+/// A/B test of a cheap variable (hook, CTA, caption, cover, first 3 s) on shared assets.
+model Experiment {
+  id              String             @id @default(cuid())
+  projectId       String
+  variable        ExperimentVariable
+  status          ExperimentStatus   @default(RUNNING)
+  hypothesis      String?
+  primaryPlatform Platform
+  metric          String             @default("ctr")
+  /// [{ key, label, value }]
+  arms            Json
+  winnerArmKey    String?
+  results         Json?
+  concludedAt     DateTime?
+  createdAt       DateTime           @default(now())
+  project         ContentProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  variants        ContentVariant[]
+
+  @@index([projectId])
+}
+
+// ============================================================================
+// Workflow: runs, jobs, events, approvals, prompts, audit
+// ============================================================================
+
+model PipelineRun {
+  id          String             @id @default(cuid())
+  workspaceId String
+  brandId     String
+  projectId   String?
+  trigger     RunTrigger
+  scope       RegenerationScope?
+  status      RunStatus          @default(RUNNING)
+  startedAt   DateTime           @default(now())
+  finishedAt  DateTime?
+  error       String?
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand       Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  project     ContentProject?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jobs        GenerationJob[]
+  usages      GenerationUsage[]
+
+  @@index([projectId, startedAt])
+  @@index([brandId, startedAt])
+}
+
+/// Job row = transactional outbox entry + execution record. The dispatcher pushes due rows to BullMQ.
+model GenerationJob {
+  id             String            @id @default(cuid())
+  workspaceId    String?
+  brandId        String?
+  projectId      String?
+  variantId      String?
+  assetId        String?
+  publicationId  String?
+  runId          String?
+  queue          String
+  type           String
+  status         JobStatus         @default(QUEUED)
+  idempotencyKey String            @unique
+  payload        Json
+  result         Json?
+  attempts       Int               @default(0)
+  maxAttempts    Int               @default(3)
+  priority       Int               @default(0)
+  timeoutMs      Int               @default(120000)
+  runAt          DateTime          @default(now())
+  dispatchedAt   DateTime?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  lastError      String?
+  /// retryable | fatal | budget_blocked
+  errorClass     String?
+  /// incremented on manual retry so BullMQ job ids stay unique
+  dispatchCount  Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  workspace      Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand          Brand?            @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  project        ContentProject?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset          Asset?            @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  publication    Publication?      @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  run            PipelineRun?      @relation(fields: [runId], references: [id], onDelete: SetNull)
+  events         JobEvent[]
+  usages         GenerationUsage[]
+
+  @@index([status, runAt])
+  @@index([projectId, createdAt])
+  @@index([brandId, createdAt])
+  @@index([runId])
+  @@index([type, status])
+}
+
+model JobEvent {
+  id        String        @id @default(cuid())
+  jobId     String
+  runId     String?
+  type      JobEventType
+  message   String
+  data      Json?
+  createdAt DateTime      @default(now())
+  job       GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
+  @@index([runId, createdAt])
+}
+
+model Approval {
+  id        String             @id @default(cuid())
+  projectId String
+  variantId String?
+  userId    String?
+  decision  ApprovalDecision
+  reasons   RejectionReason[]
+  note      String?
+  scope     RegenerationScope?
+  sceneId   String?
+  edits     Json?
+  /// project revision the decision was made on
+  revision  Int
+  createdAt DateTime           @default(now())
+  project   ContentProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  variant   ContentVariant?    @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  user      User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([decision, createdAt])
+}
+
+model PromptVersion {
+  id          String            @id @default(cuid())
+  key         String
+  version     Int
+  contentHash String
+  system      String
+  template    String
+  schemaName  String?
+  createdAt   DateTime          @default(now())
+  ideas       ContentIdea[]
+  projects    ContentProject[]
+  usages      GenerationUsage[]
+
+  @@unique([key, version])
+}
+
+model AuditLog {
+  id          String     @id @default(cuid())
+  workspaceId String?
+  userId      String?
+  actor       AuditActor
+  action      String
+  entityType  String
+  entityId    String
+  data        Json?
+  createdAt   DateTime   @default(now())
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([workspaceId, createdAt])
+}
+
+// ============================================================================
+// Money: cost ledger, budgets, tracking, conversions, revenue, expenses
+// ============================================================================
+
+/// Cost ledger. RESERVED before a paid call (counts toward budgets), COMMITTED after, RELEASED if not charged.
+model GenerationUsage {
+  id                String          @id @default(cuid())
+  workspaceId       String
+  brandId           String?
+  projectId         String?
+  jobId             String?
+  assetId           String?
+  runId             String?
+  provider          String
+  model             String
+  operation         UsageOperation
+  status            UsageStatus     @default(RESERVED)
+  isMock            Boolean         @default(false)
+  isAiVideo         Boolean         @default(false)
+  inputTokens       Int             @default(0)
+  cachedInputTokens Int             @default(0)
+  outputTokens      Int             @default(0)
+  imageCount        Int             @default(0)
+  videoSeconds      Float           @default(0)
+  audioSeconds      Float           @default(0)
+  characters        Int             @default(0)
+  estimatedCostUsd  Decimal         @db.Decimal(18, 6)
+  /// real cost when the provider reports it; takes precedence over the estimate
+  actualCostUsd     Decimal?        @db.Decimal(18, 6)
+  idempotencyKey    String          @unique
+  promptVersionId   String?
+  metadata          Json?
+  createdAt         DateTime        @default(now())
+  settledAt         DateTime?
+  workspace         Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  brand             Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  project           ContentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  job               GenerationJob?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  asset             Asset?          @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  run               PipelineRun?    @relation(fields: [runId], references: [id], onDelete: SetNull)
+  promptVersion     PromptVersion?  @relation(fields: [promptVersionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([brandId, createdAt])
+  @@index([projectId])
+  @@index([status, createdAt])
+}
+
+/// Budget limits. scopeKey = "workspace:<id>" (global API budget) or "brand:<id>".
+model Budget {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  brandId           String?   @unique
+  scopeKey          String    @unique
+  dailyLimitUsd     Decimal?  @db.Decimal(18, 6)
+  weeklyLimitUsd    Decimal?  @db.Decimal(18, 6)
+  monthlyLimitUsd   Decimal?  @db.Decimal(18, 6)
+  maxContentCostUsd Decimal?  @db.Decimal(18, 6)
+  maxAiVideoCostUsd Decimal?  @db.Decimal(18, 6)
+  maxRegenerations  Int?
+  isEnforced        Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand             Brand?    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+}
+
+model Publication {
+  id                  String              @id @default(cuid())
+  workspaceId         String
+  brandId             String
+  variantId           String
+  socialAccountId     String
+  platform            Platform
+  status              PublicationStatus   @default(SCHEDULED)
+  /// > 1 only for intentional re-publication of the same variant
+  sequence            Int                 @default(1)
+  scheduledAt         DateTime
+  publishedAt         DateTime?
+  externalPostId      String?
+  externalUrl         String?
+  externalContainerId String?
+  attempts            Int                 @default(0)
+  lastError           String?
+  errorCode           String?
+  isMock              Boolean             @default(false)
+  analyticsUntil      DateTime?
+  nextAnalyticsAt     DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  workspace           Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand               Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  variant             ContentVariant      @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  socialAccount       SocialAccount       @relation(fields: [socialAccountId], references: [id], onDelete: Restrict)
+  snapshots           AnalyticsSnapshot[]
+  jobs                GenerationJob[]
+  clicks              Click[]
+  conversions         Conversion[]
+
+  @@unique([variantId, socialAccountId, sequence])
+  @@index([status, scheduledAt])
+  @@index([brandId, publishedAt])
+  @@index([socialAccountId, scheduledAt])
+}
+
+/// Append-only time series of cumulative platform metrics.
+model AnalyticsSnapshot {
+  id             String        @id @default(cuid())
+  publicationId  String
+  capturedAt     DateTime      @default(now())
+  source         MetricsSource
+  impressions    Int?
+  reach          Int?
+  plays          Int?
+  views3s        Int?
+  completionRate Float?
+  avgWatchTimeMs Int?
+  likes          Int?
+  comments       Int?
+  saves          Int?
+  shares         Int?
+  profileVisits  Int?
+  outboundClicks Int?
+  follows        Int?
+  raw            Json?
+  publication    Publication   @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+
+  @@index([publicationId, capturedAt])
+}
+
+/// Our redirect layer: /go/<code> → destination (affiliate URL, landing page, lead form …).
+model TrackedLink {
+  id              String          @id @default(cuid())
+  workspaceId     String
+  brandId         String
+  code            String          @unique
+  destinationUrl  String
+  affiliateLinkId String?
+  productId       String?
+  projectId       String?
+  platform        Platform?
+  campaign        String?
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+  utmContent      String?
+  utmTerm         String?
+  /// append UTM parameters to the destination (own sites only; affiliate URLs usually must stay untouched)
+  appendUtm       Boolean         @default(false)
+  /// query param carrying our click id to the destination (sub-id attribution)
+  subIdParam      String?
+  isActive        Boolean         @default(true)
+  expiresAt       DateTime?
+  createdAt       DateTime        @default(now())
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand           Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  affiliateLink   AffiliateLink?  @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
+  product         Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  project         ContentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  variant         ContentVariant? @relation("VariantTrackedLink")
+  clicks          Click[]
+  conversions     Conversion[]
+
+  @@index([brandId, createdAt])
+  @@index([projectId])
+}
+
+/// Click record — data-minimised: no raw IP, no full user agent.
+model Click {
+  id            String          @id @default(cuid())
+  /// public id passed to affiliate networks as sub-id
+  clickId       String          @unique
+  trackedLinkId String
+  workspaceId   String
+  brandId       String
+  projectId     String?
+  variantId     String?
+  publicationId String?
+  productId     String?
+  platform      Platform?
+  campaign      String?
+  occurredAt    DateTime        @default(now())
+  referrerHost  String?
+  utmSource     String?
+  utmMedium     String?
+  utmCampaign   String?
+  utmContent    String?
+  utmTerm       String?
+  /// mobile | tablet | desktop | bot | unknown
+  deviceType    String?
+  osFamily      String?
+  browserFamily String?
+  country       String?
+  isBot         Boolean         @default(false)
+  /// sha256(daily salt + ip + ua) truncated — unique-visitor counting without storing PII
+  visitorHash   String?
+  isSimulated   Boolean         @default(false)
+  trackedLink   TrackedLink     @relation(fields: [trackedLinkId], references: [id], onDelete: Cascade)
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand         Brand           @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  project       ContentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  variant       ContentVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  publication   Publication?    @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  product       Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  conversions   Conversion[]
+
+  @@index([brandId, occurredAt])
+  @@index([trackedLinkId, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([variantId])
+}
+
+model Conversion {
+  id                 String            @id @default(cuid())
+  workspaceId        String
+  brandId            String?
+  affiliateProgramId String?
+  clickRefId         String?
+  /// click id exactly as reported by the network (may not resolve)
+  clickIdRaw         String?
+  trackedLinkId      String?
+  productId          String?
+  projectId          String?
+  variantId          String?
+  publicationId      String?
+  platform           Platform?
+  type               ConversionType    @default(SALE)
+  status             ConversionStatus  @default(PENDING)
+  externalId         String?
+  /// manual | csv | webhook | api | mock
+  source             String
+  occurredAt         DateTime
+  orderValue         Decimal?          @db.Decimal(18, 6)
+  commission         Decimal?          @db.Decimal(18, 6)
+  currency           String            @default("USD")
+  commissionUsd      Decimal?          @db.Decimal(18, 6)
+  isSimulated        Boolean           @default(false)
+  raw                Json?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  brand              Brand?            @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  affiliateProgram   AffiliateProgram? @relation(fields: [affiliateProgramId], references: [id], onDelete: SetNull)
+  click              Click?            @relation(fields: [clickRefId], references: [id], onDelete: SetNull)
+  trackedLink        TrackedLink?      @relation(fields: [trackedLinkId], references: [id], onDelete: SetNull)
+  product            Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  project            ContentProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  variant            ContentVariant?   @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  publication        Publication?      @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  revenueEntries     RevenueEntry[]
+
+  @@unique([affiliateProgramId, externalId])
+  @@index([brandId, occurredAt])
+  @@index([projectId])
+  @@index([workspaceId, occurredAt])
+}
+
+model RevenueEntry {
+  id           String          @id @default(cuid())
+  workspaceId  String
+  brandId      String?
+  conversionId String?
+  projectId    String?
+  variantId    String?
+  productId    String?
+  platform     Platform?
+  kind         RevenueKind
+  amount       Decimal         @db.Decimal(18, 6)
+  currency     String          @default("USD")
+  fxRateToUsd  Decimal         @default(1) @db.Decimal(18, 8)
+  amountUsd    Decimal         @db.Decimal(18, 6)
+  occurredAt   DateTime
+  /// manual | csv | webhook | api | mock
+  source       String
+  isSimulated  Boolean         @default(false)
+  note         String?
+  createdAt    DateTime        @default(now())
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  conversion   Conversion?     @relation(fields: [conversionId], references: [id], onDelete: SetNull)
+  project      ContentProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  variant      ContentVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  product      Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, occurredAt])
+  @@index([brandId, occurredAt])
+  @@index([projectId])
+  @@index([productId])
+}
+
+/// Non-AI costs (infrastructure, ads, tools). Prorated over [incurredOn, incurredOn + periodDays).
+model Expense {
+  id          String          @id @default(cuid())
+  workspaceId String
+  brandId     String?
+  category    ExpenseCategory
+  amountUsd   Decimal         @db.Decimal(18, 6)
+  incurredOn  DateTime
+  periodDays  Int             @default(1)
+  description String?
+  createdAt   DateTime        @default(now())
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand       Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, incurredOn])
+}
+
+/// Encrypted third-party credentials (AES-256-GCM). Plaintext never leaves the server.
+model ProviderCredential {
+  id             String           @id @default(cuid())
+  workspaceId    String
+  /// meta | tiktok | deepseek | fal | elevenlabs | openai
+  provider       String
+  kind           CredentialKind
+  label          String
+  ciphertext     String
+  iv             String
+  authTag        String
+  keyVersion     Int              @default(1)
+  scopes         String[]
+  expiresAt      DateTime?
+  status         CredentialStatus @default(ACTIVE)
+  lastUsedAt     DateTime?
+  lastError      String?
+  /// non-secret metadata (account names, page ids)
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccounts SocialAccount[]
+
+  @@index([workspaceId, provider])
+}

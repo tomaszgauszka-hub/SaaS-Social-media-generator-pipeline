@@ -1,0 +1,17 @@
+{
+  "name": "@cre/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Environment, provider configuration, pricing catalog",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@cre/shared": "workspace:*",
+    "zod": "4.6.5"
+  }
+}
