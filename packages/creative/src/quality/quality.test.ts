@@ -40,7 +40,7 @@ const techPass: TechnicalQaReport = {
     beats: tools.plan.beats.map((b, i) => ({
       beatId: b.id,
       motion: 2,
-      hash: (i * 0x1111111111111111).toString(16).padStart(16, "0").slice(-16),
+      hash: i.toString(16).repeat(16),
       meanLuma: 80,
     })),
   },

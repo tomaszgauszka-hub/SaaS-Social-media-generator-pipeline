@@ -240,7 +240,7 @@ export const DEMO_MEDIA = {
     width: 1080,
     height: 1920,
     role: "scene",
-    anchors: { product: [540, 1060] },
+    anchors: { product: [540, 920] },
     params: { variant: "podium", sheen: 0.3 },
     showsProduct: true,
     description:
@@ -259,7 +259,7 @@ export const DEMO_MEDIA = {
     width: 1080,
     height: 1920,
     role: "diagram",
-    anchors: { film: [540, 1206], sun: [840, 360], skin: [540, 1500] },
+    anchors: { film: [540, 1206], sun: [850, 620], skin: [540, 1500] },
     params: { film: 1 },
     description: "How a mineral filter works: UV rays reflected by a zinc oxide layer (abstract diagram)",
   },
@@ -279,6 +279,16 @@ export const DEMO_MEDIA = {
     params: {},
     showsProduct: true,
     description: "Summer flat lay: striped towel, straw hat, sunglasses and the tube",
+  },
+  sun_flatlay: {
+    width: 1080,
+    height: 1920,
+    role: "lifestyle",
+    anchors: { product: [560, 930] },
+    params: {},
+    showsProduct: true,
+    description:
+      "Clean flat lay: the tube on travertine with eucalyptus, a water dish and moving window light",
   },
 } as const satisfies Record<string, DemoMediaDef>;
 

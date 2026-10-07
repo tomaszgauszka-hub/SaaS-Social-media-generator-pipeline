@@ -40,6 +40,7 @@ interface MotionLook {
   dx: number;
   dy: number;
   rotate: number;
+  scale: number;
   opacity: number;
   blur: number;
   clipPath?: string;
@@ -50,7 +51,14 @@ function motionLook(m: BeatMedia, ms: number, beatMs: number, energy: number): M
   const local = ms - m.enterMs;
   const t = clamp01(ms / Math.max(1, beatMs));
   // media that starts with the beat is visible during the incoming transition too
-  const look: MotionLook = { dx: 0, dy: 0, rotate: 0, opacity: m.enterMs > 0 && local < 0 ? 0 : 1, blur: 0 };
+  const look: MotionLook = {
+    dx: 0,
+    dy: 0,
+    rotate: 0,
+    scale: 1,
+    opacity: m.enterMs > 0 && local < 0 ? 0 : 1,
+    blur: 0,
+  };
   switch (m.motion) {
     case "whip_in": {
       const p = prog(local, 0, 360, ease.outQuint);
@@ -71,6 +79,15 @@ function motionLook(m: BeatMedia, ms: number, beatMs: number, energy: number): M
       look.dx = (1 - p) * 260;
       look.perspective = `perspective(1800px) rotateY(${((1 - p) * -32).toFixed(2)}deg) rotateZ(${((1 - p) * 5).toFixed(2)}deg)`;
       look.opacity = prog(local, 0, 260);
+      break;
+    }
+    case "punch_in": {
+      // the first frame already shows the product (it doubles as the thumbnail); it settles with a punch
+      const p = prog(local, 0, 420, ease.outCubic);
+      look.scale = 1 + (1 - p) * 0.1;
+      look.rotate = (1 - p) * -2.5;
+      look.blur = (1 - p) * 5;
+      look.dy = Math.sin(((local > 420 ? local - 420 : 0) / 2600) * Math.PI * 2) * 6;
       break;
     }
     case "slide_in_left":
@@ -176,6 +193,7 @@ export const MediaView: React.FC<{
     look.perspective,
     `translate(${look.dx.toFixed(2)}px, ${look.dy.toFixed(2)}px)`,
     look.rotate ? `rotate(${look.rotate.toFixed(3)}deg)` : "",
+    look.scale !== 1 ? `scale(${look.scale.toFixed(4)})` : "",
     m.rotate ? `rotate(${m.rotate}deg)` : "",
   ]
     .filter(Boolean)

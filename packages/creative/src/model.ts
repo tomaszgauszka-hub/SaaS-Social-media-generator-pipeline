@@ -114,6 +114,8 @@ export const MotionPreset = z.enum([
   "whip_in",
   "macro_drift",
   "tilt_in",
+  /** visible from the very first frame: the product lands with a short scale punch (opening shots) */
+  "punch_in",
 ]);
 export type MotionPreset = z.infer<typeof MotionPreset>;
 

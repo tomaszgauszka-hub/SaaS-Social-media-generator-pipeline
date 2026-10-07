@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BENCHMARK_BRIEFS } from "./benchmark/briefs.ts";
 import { CreativeBrief } from "./brief.ts";
 import { directCreative, productFirstVisibleMs } from "./director.ts";
+import { mediaShowsProduct } from "./model.ts";
 import { checkSafeZones } from "./safe-zones.ts";
 import { readingTimeMs } from "./subtitles.ts";
 
@@ -35,6 +36,26 @@ describe("CreativeDirector", () => {
     // every text slot has source copy
     for (const slot of Object.keys(sb.textSlots)) expect(localePack.strings[slot]?.trim(), slot).toBeTruthy();
   });
+
+  it.each(briefs.map((b) => [b.id, b] as const))(
+    "%s opens on a visible product and never dissolves one product shot into another",
+    (_id, brief) => {
+      const { storyboard: sb } = directCreative(brief);
+      // the opening frame is the thumbnail: no entrance that starts off-screen or transparent
+      for (const m of sb.beats[0]!.media.filter((x) => x.enterMs === 0))
+        expect(["whip_in", "tilt_in", "drop_in", "slide_in_left", "slide_in_right"]).not.toContain(m.motion);
+      const media = new Map(sb.media.map((m) => [m.id, m]));
+      const product = (i: number) =>
+        sb.beats[i]!.media.some((m) => {
+          const ref = media.get(m.assetId);
+          return ref ? mediaShowsProduct(ref) : false;
+        });
+      sb.beats.forEach((b, i) => {
+        if (i > 0 && product(i) && product(i - 1))
+          expect(["fade", "scale_in"], b.id).not.toContain(b.transitionIn.type);
+      });
+    },
+  );
 
   it("gives every category its own visual language", () => {
     const kits = briefs.map((b) => directCreative(b).storyboard.style);

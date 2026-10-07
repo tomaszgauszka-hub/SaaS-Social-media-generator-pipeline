@@ -339,7 +339,8 @@ function hookBeat(c: Ctx, id: string): Draft {
       media({
         assetId: brief.heroMedia,
         slot: "primary",
-        box: rect(40, 640, 1000, 820),
+        // ends above the content floor: the push-in must never carry the product into the disclosure band
+        box: rect(40, 600, 1000, G.CONTENT_BOTTOM - 640),
         motion: kit.direction.motion.hero,
         shadow: true,
         backlight: true,
@@ -612,7 +613,7 @@ function statBeat(c: Ctx, id: string): Draft | null {
           assetId: mediaId,
           slot: "background",
           box: c.isProduct(mediaId)
-            ? rect(150, 990, 780, G.CONTENT_BOTTOM - 990)
+            ? rect(170, 990, 740, G.CONTENT_BOTTOM - 1030)
             : rect(0, 980, FRAME_WIDTH, 940),
           crop: c.isProduct(mediaId) ? "contain" : "cover",
           motion: "slow_zoom",
@@ -1352,20 +1353,38 @@ function cameraFor(d: Draft, energy: number, side: 1 | -1): VisualBeat["camera"]
     case "hero_low": {
       // a lone product on a set is where a reel most easily stalls: push in around the product itself (so it
       // never grows into the headline above or the tagline below) and travel sideways
-      const main = d.media.find((m) => m.slot === "primary");
-      const origin =
-        main && main.crop !== "cover"
-          ? { x: main.box.x + main.box.w / 2, y: main.box.y + main.box.h / 2 }
-          : undefined;
+      const origin = productOrigin(d);
       return { zoom: [1, 1.1], x: [0, side * 64], y: [0, 0], ...(origin ? { origin } : {}) };
     }
-    default:
-      // product on a set: a clear push-in with a lateral drift — a product that only floats reads as a still
-      return { zoom: [1, 1.12 - energy * 0.03], x: [0, side * 28], y: [0, -12] };
+    case "cta_card":
+    case "list_card":
+    case "stat_big":
+    case "steps_row": {
+      // product on a set: a clear push-in with a lateral drift — a product that only floats reads as a still;
+      // the push is centred on the product so it never grows into the panel, the gauge or the disclosure band
+      const origin = productOrigin(d);
+      return {
+        zoom: [1, 1.12 - energy * 0.03],
+        x: [0, side * 28],
+        y: [0, -12],
+        ...(origin ? { origin } : {}),
+      };
+    }
   }
 }
 
+/** centre of the first cut-out (non-cover) media of a beat — the camera pushes in around it */
+function productOrigin(d: Draft): { x: number; y: number } | undefined {
+  const main =
+    d.media.find((m) => m.slot === "primary" && m.crop !== "cover") ??
+    d.media.find((m) => m.crop !== "cover");
+  return main ? { x: main.box.x + main.box.w / 2, y: main.box.y + main.box.h / 2 } : undefined;
+}
+
 const beatId = (n: number) => `s${String(n).padStart(2, "0")}`;
+
+/** transitions that blend the outgoing and incoming frames at partial opacity */
+const DISSOLVES = new Set<TransitionType>(["fade", "scale_in"]);
 
 const ENTRANCE_MOTIONS = new Set<MotionPreset>([
   "whip_in",
@@ -1463,6 +1482,18 @@ export function directCreative(brief: CreativeBrief, opts: DirectorOptions = {})
       t = dir.transitions[rot++ % dir.transitions.length]!;
     return t;
   });
+  // a dissolve between two product shots shows two half-transparent products at once (a muddy double
+  // exposure): between product beats use a soft-focus blur or a hard-edged wipe — or a clean cut rather
+  // than the same transition twice in a row
+  transitions.forEach((t, i) => {
+    if (i === 0 || drafts[i]!.draft.forceTransition || !DISSOLVES.has(t)) return;
+    if (!drafts[i]!.draft.showsProduct || !drafts[i - 1]!.draft.showsProduct) return;
+    const prev = transitions[i - 1];
+    const next = transitions[i + 1];
+    transitions[i] =
+      (["blur", "mask_wipe"] as const).find((x) => dir.transitions.includes(x) && x !== prev && x !== next) ??
+      "cut";
+  });
 
   // 4. beats with absolute timing
   let t = 0;
@@ -1477,14 +1508,19 @@ export function directCreative(brief: CreativeBrief, opts: DirectorOptions = {})
       layout: draft.layout,
       // an entrance motion (whip-in, drop-in …) is the transition when the beat is cut in; under a moving
       // transition it would leave the incoming frames empty, so it becomes a gentle push instead
+      // the opening frame is the thumbnail: there the entrance becomes a punch-in that shows the product at once
       media:
-        transition === "cut" || transition === "match_cut"
-          ? draft.media
-          : draft.media.map((m) =>
-              ENTRANCE_MOTIONS.has(m.motion) && m.enterMs === 0
-                ? { ...m, motion: "cinematic_push" as const }
-                : m,
-            ),
+        i === 0
+          ? draft.media.map((m) =>
+              ENTRANCE_MOTIONS.has(m.motion) && m.enterMs === 0 ? { ...m, motion: "punch_in" as const } : m,
+            )
+          : transition === "cut" || transition === "match_cut"
+            ? draft.media
+            : draft.media.map((m) =>
+                ENTRANCE_MOTIONS.has(m.motion) && m.enterMs === 0
+                  ? { ...m, motion: "cinematic_push" as const }
+                  : m,
+              ),
       text: draft.text,
       overlays: draft.overlays,
       transitionIn: {

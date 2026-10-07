@@ -355,42 +355,45 @@ export const SunPodium: React.FC<VectorProps> = ({ params, ms }) => {
         </filter>
       </defs>
       <rect width={1080} height={1920} fill={u.url("bg")} />
-      <path d="M220,1500 L220,560 A320,320 0 0 1 860,560 L860,1500 Z" fill={u.url("arch")} />
-      <path
-        d="M220,1500 L220,560 A320,320 0 0 1 860,560 L860,1500"
-        fill="none"
-        stroke="#E2C6B3"
-        strokeWidth={4}
-      />
-      {/* moving caustic light inside the niche */}
-      {[0, 1, 2, 3].map((k) => (
-        <ellipse
-          key={k}
-          cx={420 + k * 90 + Math.sin(t * 0.8 + k) * 60}
-          cy={760 + k * 110 + Math.cos(t * 0.6 + k) * 40}
-          rx={170}
-          ry={70}
-          fill={u.url("caustic")}
-          opacity={0.5}
-          transform={`rotate(${-20 + k * 8} 540 900)`}
+      <rect y={1330} width={1080} height={590} fill="#E0BFA9" />
+      {/* the set sits high: the product must clear the bottom band (disclosure, captions) */}
+      <g transform="translate(0 -170)">
+        <path d="M220,1500 L220,560 A320,320 0 0 1 860,560 L860,1500 Z" fill={u.url("arch")} />
+        <path
+          d="M220,1500 L220,560 A320,320 0 0 1 860,560 L860,1500"
+          fill="none"
+          stroke="#E2C6B3"
+          strokeWidth={4}
         />
-      ))}
-      <rect y={1500} width={1080} height={420} fill="#E0BFA9" />
-      {/* back podium */}
-      <rect x={690} y={1390} width={260} height={210} fill={u.url("stone")} />
-      <ellipse cx={820} cy={1390} rx={130} ry={24} fill={u.url("top")} />
-      {/* main podium */}
-      <rect x={270} y={1480} width={540} height={250} fill={u.url("stone")} />
-      <ellipse cx={540} cy={1730} rx={270} ry={46} fill="#BF9F88" />
-      <ellipse cx={540} cy={1480} rx={270} ry={46} fill={u.url("top")} />
-      {/* reflection of the tube on the polished top */}
-      <g clipPath={u.url("topclip")} opacity={0.2}>
-        <g transform="translate(0 2960) scale(1 -1)">
-          <Tube x={540} y={1480} s={0.86} params={{ ...params, sheen }} ms={ms} />
+        {/* moving caustic light inside the niche */}
+        {[0, 1, 2, 3].map((k) => (
+          <ellipse
+            key={k}
+            cx={420 + k * 90 + Math.sin(t * 0.8 + k) * 60}
+            cy={760 + k * 110 + Math.cos(t * 0.6 + k) * 40}
+            rx={170}
+            ry={70}
+            fill={u.url("caustic")}
+            opacity={0.5}
+            transform={`rotate(${-20 + k * 8} 540 900)`}
+          />
+        ))}
+        {/* back podium */}
+        <rect x={690} y={1390} width={260} height={210} fill={u.url("stone")} />
+        <ellipse cx={820} cy={1390} rx={130} ry={24} fill={u.url("top")} />
+        {/* main podium */}
+        <rect x={270} y={1480} width={540} height={250} fill={u.url("stone")} />
+        <ellipse cx={540} cy={1730} rx={270} ry={46} fill="#BF9F88" />
+        <ellipse cx={540} cy={1480} rx={270} ry={46} fill={u.url("top")} />
+        {/* reflection of the tube on the polished top */}
+        <g clipPath={u.url("topclip")} opacity={0.2}>
+          <g transform="translate(0 2960) scale(1 -1)">
+            <Tube x={540} y={1480} s={0.78} params={{ ...params, sheen }} ms={ms} />
+          </g>
         </g>
+        <ellipse cx={540} cy={1482} rx={110} ry={13} fill="#6B4434" opacity={0.25} />
+        <Tube x={540} y={1480} s={0.78} params={{ ...params, sheen }} ms={ms} />
       </g>
-      <ellipse cx={540} cy={1482} rx={118} ry={14} fill="#6B4434" opacity={0.25} />
-      <Tube x={540} y={1480} s={0.86} params={{ ...params, sheen }} ms={ms} />
       {/* blurred foreground grass, parallax */}
       <g filter={u.url("blur")} opacity={0.85} transform={`translate(${drift * 26} 0)`}>
         {Array.from({ length: 7 }, (_, i) => (
@@ -567,7 +570,10 @@ export const SunMineral: React.FC<VectorProps> = ({ params, ms }) => {
   const film = clamp01(num(params, "film", 1));
   const rays = [0, 1, 2, 3, 4];
   const hit = (k: number) => ({ x: 170 + k * 190, y: 1196 });
-  const src = (k: number) => ({ x: 790 + k * 18, y: 410 + k * 10 });
+  // the sun sits below the title zone (top ~420 px belong to the headline)
+  const SX = 850;
+  const SY = 620;
+  const src = (k: number) => ({ x: SX - 50 + k * 18, y: SY + 50 + k * 10 });
   return (
     <g>
       <defs>
@@ -610,23 +616,23 @@ export const SunMineral: React.FC<VectorProps> = ({ params, ms }) => {
         />
       </defs>
       <rect width={1080} height={1920} fill={u.url("sky")} />
-      <circle cx={840} cy={360} r={300} fill={u.url("glow")} />
-      <g transform={`rotate(${t * 12} 840 360)`}>
+      <circle cx={SX} cy={SY} r={280} fill={u.url("glow")} />
+      <g transform={`rotate(${t * 12} ${SX} ${SY})`}>
         {Array.from({ length: 12 }, (_, i) => (
           <rect
             key={i}
-            x={836}
-            y={180}
+            x={SX - 4}
+            y={SY - 170}
             width={8}
-            height={46}
+            height={40}
             rx={4}
             fill="#F6B169"
             opacity={0.7}
-            transform={`rotate(${i * 30} 840 360)`}
+            transform={`rotate(${i * 30} ${SX} ${SY})`}
           />
         ))}
       </g>
-      <circle cx={840} cy={360} r={120} fill={u.url("sun")} />
+      <circle cx={SX} cy={SY} r={110} fill={u.url("sun")} />
       {/* incoming UV rays and their reflection off the mineral layer */}
       {rays.map((k) => {
         const a = src(k);
@@ -1043,6 +1049,150 @@ const SunSwatch: React.FC<{ ms: number }> = ({ ms }) => {
           fill="#FFFFFF"
           opacity={0.55 + 0.35 * Math.sin(t * 3 + i)}
         />
+      ))}
+      {/* the tube rests beside the swatch it just dispensed — the shot is never texture alone */}
+      <ellipse
+        cx={330}
+        cy={505}
+        rx={92}
+        ry={250}
+        fill="#7A4B36"
+        opacity={0.22}
+        filter={u.url("soft")}
+        transform="rotate(-50 330 505)"
+      />
+      <Tube x={560} y={660} s={0.5} rotate={-50} params={{ sheen: 0.4 + 0.15 * Math.sin(t * 1.2) }} ms={ms} />
+    </g>
+  );
+};
+
+/* ---------------------------------------------------------------- clean flat lay on travertine (top-down) */
+const sprig = (x: number, y: number, angle: number, scale: number, key: string) => (
+  <g key={key} transform={`translate(${x} ${y}) rotate(${angle}) scale(${scale})`}>
+    <path
+      d="M0,0 C80,-40 190,-60 330,-40"
+      fill="none"
+      stroke="#7E8F78"
+      strokeWidth={7}
+      strokeLinecap="round"
+    />
+    {Array.from({ length: 7 }, (_, i) => {
+      const lx = 40 + i * 44;
+      const ly = -24 - Math.sin((i / 6) * Math.PI) * 26;
+      const side = i % 2 ? 1 : -1;
+      return (
+        <g key={i} transform={`translate(${lx} ${ly}) rotate(${side * 35})`}>
+          <ellipse cx={0} cy={side * 30} rx={30} ry={24} fill={i % 3 ? "#9DB39A" : "#8BA58C"} />
+          <ellipse cx={-6} cy={side * 26} rx={12} ry={8} fill="#C3D3BE" opacity={0.6} />
+        </g>
+      );
+    })}
+  </g>
+);
+
+export const SunFlatlay: React.FC<VectorProps> = ({ params, ms }) => {
+  const u = useIds();
+  const t = ms / 1000;
+  // window light drifting across the stone
+  const sweep = (t * 34) % 1600;
+  return (
+    <g>
+      <defs>
+        <Lin
+          id={u.id("stone")}
+          x1={0}
+          y1={0}
+          x2={1}
+          y2={1}
+          stops={[
+            [0, "#F3E6D8"],
+            [0.5, "#EAD8C5"],
+            [1, "#DCC4AC"],
+          ]}
+        />
+        <Rad
+          id={u.id("dish")}
+          stops={[
+            [0, "#FBF7F2"],
+            [0.75, "#EFE6DC"],
+            [1, "#D8C9BA"],
+          ]}
+        />
+        <filter id={u.id("soft")} x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="16" />
+        </filter>
+      </defs>
+      <rect width={1080} height={1920} fill={u.url("stone")} />
+      {/* travertine veins and pores */}
+      {Array.from({ length: 7 }, (_, i) => (
+        <path
+          key={i}
+          d={`M-40,${180 + i * 260} C260,${140 + i * 260} 640,${230 + i * 260} 1120,${170 + i * 260}`}
+          fill="none"
+          stroke="#D2B89E"
+          strokeWidth={3 + (i % 3) * 2}
+          opacity={0.5}
+        />
+      ))}
+      {scatter(90, 0, 0, 1080, 1920, 21).map((p, i) => (
+        <ellipse key={i} cx={p.x} cy={p.y} rx={3 + p.k * 9} ry={2 + p.k * 3} fill="#CDB096" opacity={0.45} />
+      ))}
+      {/* window light: two soft bands moving slowly over the set */}
+      <g opacity={0.32} transform="rotate(-28 540 960)">
+        <rect x={-500 + sweep} y={-400} width={260} height={2800} fill="#FFF8EE" filter={u.url("soft")} />
+        <rect x={-160 + sweep} y={-400} width={120} height={2800} fill="#FFF8EE" filter={u.url("soft")} />
+      </g>
+      {/* ceramic dish with water */}
+      <circle
+        cx={850}
+        cy={360}
+        r={150}
+        fill="#6B4C3A"
+        opacity={0.16}
+        filter={u.url("soft")}
+        transform="translate(16 22)"
+      />
+      <circle cx={850} cy={360} r={150} fill={u.url("dish")} />
+      <circle cx={850} cy={360} r={112} fill="#E7DCD0" />
+      <circle cx={850} cy={360} r={100} fill="#D9E6E6" opacity={0.55} />
+      <ellipse
+        cx={820 + Math.sin(t * 1.3) * 12}
+        cy={330}
+        rx={46}
+        ry={14}
+        fill="#FFFFFF"
+        opacity={0.7}
+        transform="rotate(-30 820 330)"
+      />
+      {/* eucalyptus */}
+      {sprig(-30, 330, -8, 1.25, "a")}
+      {sprig(1110, 1560, 168, 1.15, "b")}
+      {sprig(980, 760, 120, 0.8, "c")}
+      {/* the tube, lying diagonally, with a soft contact shadow */}
+      <ellipse
+        cx={560}
+        cy={930}
+        rx={150}
+        ry={400}
+        fill="#6B4C3A"
+        opacity={0.26}
+        filter={u.url("soft")}
+        transform="rotate(37 560 930)"
+      />
+      <Tube
+        x={318}
+        y={1196}
+        s={0.72}
+        rotate={37}
+        params={{ ...params, sheen: 0.3 + 0.2 * Math.sin(t * 0.9) }}
+        ms={ms}
+      />
+      {/* water droplets on the stone */}
+      {scatter(9, 140, 1180, 820, 420, 13).map((p, i) => (
+        <g key={i}>
+          <circle cx={p.x} cy={p.y} r={7 + p.k * 12} fill="#FFFFFF" opacity={0.5} />
+          <circle cx={p.x - 3} cy={p.y - 3} r={2 + p.k * 3} fill="#FFFFFF" opacity={0.95} />
+        </g>
       ))}
     </g>
   );

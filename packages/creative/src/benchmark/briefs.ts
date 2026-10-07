@@ -356,6 +356,7 @@ export const BENCH_BEAUTY: CreativeBriefInput = {
     demoMedia("sun_mineral"),
     demoMedia("sun_texture"),
     demoMedia("sun_outdoor"),
+    demoMedia("sun_flatlay"),
   ],
   hook: {
     text: "Mineral SPF 50, *no white cast*",
@@ -434,7 +435,7 @@ export const BENCH_BEAUTY: CreativeBriefInput = {
         params: { view: "swatch" },
         zoom: 1.1,
       },
-      { media: "sun_tube", label: "Fragrance-free", icon: "leaf", focus: "filter", zoom: 1.7 },
+      { media: "sun_flatlay", label: "Fragrance-free", icon: "leaf", focus: "product", zoom: 1.08 },
       { media: "sun_outdoor", label: "50 ml — fits any bag", icon: "bag", focus: "product", zoom: 1.15 },
     ],
   },

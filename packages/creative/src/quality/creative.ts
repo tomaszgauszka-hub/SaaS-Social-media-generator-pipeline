@@ -437,7 +437,7 @@ export function creativeQa(input: CreativeQaInput): CreativeQaReport {
   }
 
   // 12. visual repetition (perceptual hashes of each beat)
-  let repetitionScore = 100;
+  let repetitionScore: number;
   {
     const notes: string[] = [];
     let s = 100;

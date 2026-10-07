@@ -46,7 +46,8 @@ export const TextView: React.FC<{ plan: RenderPlan; text: ResolvedText; ms: numb
             height: b.h + 16,
             borderRadius: 12,
             background: lightInk ? "rgba(8,9,12,0.5)" : "rgba(255,255,255,0.72)",
-            opacity: clamp01(local / 200),
+            // a chip behind text that does not animate (the disclosure) is there from its first frame
+            opacity: t.animation === "none" ? 1 : clamp01(local / 200),
           }}
         />
       );

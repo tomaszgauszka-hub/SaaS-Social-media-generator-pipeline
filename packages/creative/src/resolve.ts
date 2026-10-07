@@ -13,6 +13,7 @@ import {
   type TextColor,
   type TextElement,
   type TextRole,
+  mediaShowsProduct,
 } from "./model.ts";
 import {
   checklistItemBox,
@@ -22,7 +23,7 @@ import {
   stepRows,
   timerLayout,
 } from "./overlay-geometry.ts";
-import { checkSafeZones } from "./safe-zones.ts";
+import { checkSafeZones, intersects } from "./safe-zones.ts";
 import { fitText, type TextMeasurer } from "./text-fit.ts";
 
 /**
@@ -440,7 +441,39 @@ export function resolveRenderPlan(
     for (const o of b.overlays)
       if (o.kind === "badge" || o.kind === "icon_chip") elements.push({ id: `${b.id}/${o.id}`, rect: o.box });
   }
-  if (disclosure) elements.push({ id: "global.disclosure", rect: drawnBounds(disclosure) });
+  if (disclosure) {
+    const d = drawnBounds(disclosure);
+    elements.push({ id: "global.disclosure", rect: d });
+    // the disclosure must never sit on the product: a cut-out product's drawn bounds — with its own zoom and
+    // the beat's camera move at either end of the beat — may not reach into the disclosure chip
+    const chip = { x: d.x - 16, y: d.y - 8, w: d.w + 32, h: d.h + 16 };
+    for (const b of beats)
+      for (const m of b.media) {
+        const ref = sb.media.find((r) => r.id === m.assetId);
+        if (!ref || m.crop !== "contain" || !mediaShowsProduct(ref)) continue;
+        const k = Math.min(m.box.w / ref.width, m.box.h / ref.height);
+        const cx = m.box.x + m.box.w / 2;
+        const cy = m.box.y + m.box.h / 2;
+        const hit = [0, 1].some((end) => {
+          const mz = m.zoom[end]!;
+          const w = ref.width * k * mz;
+          const h = ref.height * k * mz;
+          const cam = b.camera;
+          const z = cam.zoom[end]!;
+          const o = cam.origin ?? { x: sb.format.width / 2, y: sb.format.height / 2 };
+          const x0 = cam.x[end]! + o.x + (cx - w / 2 - o.x) * z;
+          const y0 = cam.y[end]! + o.y + (cy - h / 2 - o.y) * z;
+          return intersects({ x: x0, y: y0, w: w * z, h: h * z }, chip);
+        });
+        if (hit)
+          issues.push({
+            severity: "major",
+            code: "DISCLOSURE_COLLISION",
+            message: `${m.assetId} reaches into the disclosure`,
+            beatId: b.id,
+          });
+      }
+  }
   for (const v of checkSafeZones(elements, sb.platforms, sb.format)) {
     issues.push({
       severity: v.element.includes("button") || v.element.includes(".cta") ? "blocker" : "major",

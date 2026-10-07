@@ -43,7 +43,7 @@ async function make(name: string, video: string, extra: string[] = []) {
   return file;
 }
 
-beforeAll(async () => {
+beforeAll(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "cre-techqa-"));
 });
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
