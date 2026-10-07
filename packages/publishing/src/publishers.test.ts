@@ -515,6 +515,40 @@ describe("TikTokPublisher", () => {
     expect(privacy).toEqual(["PUBLIC_TO_EVERYONE", "SELF_ONLY"]);
   });
 
+  it("discloses commercial content on visible posts and respects the creator's interaction settings", async () => {
+    http
+      .on(
+        "POST",
+        `${TIKTOK}/post/publish/creator_info/query/`,
+        json({
+          data: {
+            privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"],
+            max_video_post_duration_sec: 600,
+            comment_disabled: false,
+            duet_disabled: true,
+            stitch_disabled: true,
+          },
+        }),
+      )
+      .on("POST", `${TIKTOK}/post/publish/video/init/`, json({ data: { publish_id: "p" } }));
+    const visible = new TikTokPublisher({ appConfigured: true, privacyLevel: "PUBLIC_TO_EVERYONE" });
+    const hidden = new TikTokPublisher({ appConfigured: true });
+    await visible.publish(request("TIKTOK", { promotion: "THIRD_PARTY" }), {});
+    await visible.publish(request("TIKTOK", { promotion: "OWN_BUSINESS" }), {});
+    await hidden.publish(request("TIKTOK", { promotion: "THIRD_PARTY" }), {});
+    const infos = http
+      .callsTo(`${TIKTOK}/post/publish/video/init/`)
+      .map((c) => (JSON.parse(c.body ?? "{}") as { post_info: Record<string, unknown> }).post_info);
+    expect(infos.map((i) => [i.privacy_level, i.brand_content_toggle, i.brand_organic_toggle])).toEqual([
+      ["PUBLIC_TO_EVERYONE", true, false], // affiliate → branded content
+      ["PUBLIC_TO_EVERYONE", false, true], // own product → "your brand"
+      ["SELF_ONLY", false, false], // TikTok forbids private branded content; nobody else sees it anyway
+    ]);
+    expect(
+      infos.every((i) => i.disable_duet === true && i.disable_stitch === true && i.disable_comment === false),
+    ).toBe(true);
+  });
+
   it("rejects videos longer than the creator's limit before initialising an upload", async () => {
     http.on("POST", `${TIKTOK}/post/publish/creator_info/query/`, creatorInfo(["SELF_ONLY"], 15));
     await expect(new TikTokPublisher({ appConfigured: true }).publish(request("TIKTOK"), {})).rejects.toThrow(

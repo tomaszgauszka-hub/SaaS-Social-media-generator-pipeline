@@ -34,9 +34,7 @@ export class TikTokPublisher implements SocialPublisher {
   readonly isMock = false;
   readonly platforms: readonly SocialPlatform[] = ["TIKTOK"];
 
-  constructor(
-    private readonly opts: { appConfigured: boolean; privacyLevel?: string; brandedContent?: boolean },
-  ) {}
+  constructor(private readonly opts: { appConfigured: boolean; privacyLevel?: string }) {}
 
   healthCheck(): Promise<PublisherHealth> {
     return Promise.resolve({
@@ -67,7 +65,13 @@ export class TikTokPublisher implements SocialPublisher {
     if (problems.length) throw new FatalError(`Cannot publish to TikTok: ${problems.join("; ")}`);
     const headers = this.headers(req.credentials);
     const info = await socialRequest<
-      TikTokEnvelope<{ privacy_level_options?: string[]; max_video_post_duration_sec?: number }>
+      TikTokEnvelope<{
+        privacy_level_options?: string[];
+        max_video_post_duration_sec?: number;
+        comment_disabled?: boolean;
+        duet_disabled?: boolean;
+        stitch_disabled?: boolean;
+      }>
     >("tiktok", `${API}/post/publish/creator_info/query/`, {
       method: "POST",
       headers,
@@ -79,6 +83,9 @@ export class TikTokPublisher implements SocialPublisher {
     const maxSec = info.data?.max_video_post_duration_sec;
     if (maxSec && (req.media.durationMs ?? 0) / 1000 > maxSec)
       throw new FatalError(`Video longer than creator limit ${maxSec}s`);
+    // Commercial-content disclosure. TikTok does not allow branded content to be private, and a private post has
+    // no audience to disclose to — so the toggles apply to visible posts only.
+    const visible = privacy !== "SELF_ONLY";
 
     const init = await socialRequest<TikTokEnvelope<{ publish_id: string }>>(
       "tiktok",
@@ -90,12 +97,13 @@ export class TikTokPublisher implements SocialPublisher {
           post_info: {
             title: req.caption.slice(0, 2200),
             privacy_level: privacy,
-            disable_comment: false,
-            disable_duet: false,
-            disable_stitch: false,
+            // the creator's own interaction settings always win
+            disable_comment: info.data?.comment_disabled ?? false,
+            disable_duet: info.data?.duet_disabled ?? false,
+            disable_stitch: info.data?.stitch_disabled ?? false,
             video_cover_timestamp_ms: 1200,
-            brand_content_toggle: this.opts.brandedContent ?? false,
-            brand_organic_toggle: false,
+            brand_content_toggle: visible && req.promotion === "THIRD_PARTY",
+            brand_organic_toggle: visible && req.promotion === "OWN_BUSINESS",
             is_aigc: req.aiGenerated,
           },
           source_info: { source: "PULL_FROM_URL", video_url: req.media.videoUrl },

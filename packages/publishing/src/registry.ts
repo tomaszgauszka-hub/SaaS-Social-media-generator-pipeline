@@ -19,6 +19,7 @@ export function createSocialPublishers(env: Env, overrides: Partial<PublisherMap
   });
   const tiktok = new TikTokPublisher({
     appConfigured: Boolean(env.TIKTOK_CLIENT_KEY && env.TIKTOK_CLIENT_SECRET),
+    privacyLevel: env.TIKTOK_PRIVACY_LEVEL,
   });
   const pick = (platform: SocialPlatform): SocialPublisher => {
     const name = sel.social[platform];

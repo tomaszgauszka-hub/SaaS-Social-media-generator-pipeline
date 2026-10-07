@@ -119,6 +119,14 @@ export default async function ProvidersPage({
                   <Badge tone="green">kill switch on — nothing is posted</Badge>
                 ),
               ],
+              [
+                "TikTok post visibility",
+                e.TIKTOK_PRIVACY_LEVEL === "SELF_ONLY" ? (
+                  <Badge tone="green">private (SELF_ONLY)</Badge>
+                ) : (
+                  <Badge tone="amber">{e.TIKTOK_PRIVACY_LEVEL}</Badge>
+                ),
+              ],
               ["Hard daily cap (real money)", `$${e.HARD_DAILY_BUDGET_USD.toFixed(2)}`],
               ["Mock cost mode", sel.mock.costMode],
               ["App URL (tracking links)", e.APP_URL],

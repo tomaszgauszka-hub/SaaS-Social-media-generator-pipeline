@@ -109,5 +109,6 @@ export function describeProviderConfig(env: Env): Record<string, unknown> {
       s3: Boolean(env.S3_BUCKET && env.S3_ACCESS_KEY_ID),
     },
     publishingEnabled: env.PUBLISHING_ENABLED,
+    tiktokPrivacyLevel: env.TIKTOK_PRIVACY_LEVEL,
   };
 }

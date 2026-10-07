@@ -1,6 +1,6 @@
 import { CONTENT_PAID_STATES, enqueueJob, requeueJob, transitionContent } from "@cre/core";
 import { Prisma, type ContentStatus } from "@cre/db";
-import { addDays, addHours, idempotencyKey, zonedParts, type BudgetBlockReason } from "@cre/shared";
+import { addDays, idempotencyKey, zonedParts, type BudgetBlockReason } from "@cre/shared";
 import type { PipelineContext } from "../context.ts";
 import type { JobExecution } from "../job-types.ts";
 import { enqueueProfile } from "./analytics.ts";
@@ -142,16 +142,16 @@ export async function archiveFinished(ctx: PipelineContext, now: Date): Promise<
 }
 
 /**
- * Reservations left RESERVED by a crashed worker are committed at their estimate (we cannot know whether the
- * provider charged — overstating spend is the safe direction for a budget).
+ * Reservations left RESERVED by a crashed worker (no job runs longer than ~1 h): real ones are committed at their
+ * estimate (we cannot know whether the provider charged — overstating spend is the safe direction for a budget);
+ * mock ones are released. One policy, owned by the BudgetGuard.
  */
-export async function settleStaleReservations(ctx: PipelineContext, now: Date): Promise<number> {
-  const res = await ctx.prisma.generationUsage.updateMany({
-    where: { status: "RESERVED", createdAt: { lt: addHours(now, -2) } },
-    data: { status: "COMMITTED", settledAt: now },
-  });
-  return res.count;
+export async function settleStaleReservations(ctx: PipelineContext): Promise<number> {
+  const { committed, released } = await ctx.guard.reconcileStale(STALE_RESERVATION_MS);
+  return committed + released;
 }
+
+const STALE_RESERVATION_MS = 2 * 3_600_000;
 
 /** maintenance.tick — periodic housekeeping (every minute from the worker). */
 export async function maintenanceTickHandler(exec: JobExecution) {
@@ -160,7 +160,7 @@ export async function maintenanceTickHandler(exec: JobExecution) {
   const resumed = await resumeBudgetBlocked(ctx);
   const ideation = await scheduleAutoIdeation(ctx, now);
   const archived = await archiveFinished(ctx, now);
-  const staleReservations = await settleStaleReservations(ctx, now);
+  const staleReservations = await settleStaleReservations(ctx);
   const experiments = await concludeExperiments(ctx, now);
   // daily learning-profile refresh for brands that published in the last two weeks
   const active = await ctx.prisma.publication.findMany({

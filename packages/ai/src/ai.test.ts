@@ -208,6 +208,31 @@ describe("mock LLM", () => {
     for (const id of script.claimsUsed) expect(productFixture.facts.map((f) => f.id)).toContain(id);
   });
 
+  it("mock ideation never runs dry: unused combinations first, then numbered takes", () => {
+    const ctx = {
+      brand: brandFixture,
+      products: [productFixture],
+      count: 3,
+      formats: ["SHORT_VIDEO"],
+      performanceSummary: "",
+      avoidTitles: [] as string[],
+    };
+    const seen = new Set<string>();
+    for (let run = 0; run < 12; run++) {
+      const { ideas } = mockIdeas(ctx);
+      expect(ideas).toHaveLength(3);
+      for (const idea of ideas) {
+        expect(seen.has(idea.title)).toBe(false);
+        seen.add(idea.title);
+      }
+      ctx.avoidTitles.push(...ideas.map((i) => i.title), ...ideas.map((i) => i.hook));
+    }
+    // the first runs use every product × angle combination once before any "take 2"
+    const firstTakes = [...seen].filter((t) => !t.includes("(take"));
+    expect(firstTakes.length).toBeGreaterThanOrEqual(8);
+    expect([...seen].some((t) => t.endsWith("(take 2)"))).toBe(true);
+  });
+
   it("runs prompts end-to-end with usage and simulated cost", async () => {
     const llm = new MockLLMProvider({ costMode: "simulate" });
     const run = await runPrompt(llm, shortVideoScriptPrompt, scriptCtx);

@@ -2,10 +2,13 @@ import type { NextRequest } from "next/server";
 import { buildRedirectUrl, recordClick } from "@cre/core";
 import { errorMessage } from "@cre/shared";
 import { db } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
 import { cdnCountry, clientIp } from "@/lib/request";
 import { trackingSecret } from "@/lib/tracking";
 
 const HEADERS = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" };
+/** recorded clicks per visitor IP and link per minute (generous: carrier NAT puts many people on one IP) */
+const CLICKS_PER_MINUTE = 30;
 
 async function findLink(code: string) {
   if (!/^[A-Za-z0-9]{4,24}$/.test(code)) return null;
@@ -29,10 +32,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { code } = await params;
   const link = await findLink(code);
   if (!link) return notFound();
+  const ip = clientIp(request.headers);
+  // click floods (scripts, refresh loops) still get redirected, but stop inflating clicks and DB writes
+  if (ip && !rateLimit(`go:${ip}:${link.id}`, CLICKS_PER_MINUTE, 60_000).ok)
+    return new Response(null, {
+      status: 302,
+      headers: { ...HEADERS, Location: buildRedirectUrl(link, "untracked") },
+    });
   let location: string;
   try {
     const click = await recordClick(db(), link, {
-      ip: clientIp(request.headers),
+      ip,
       userAgent: request.headers.get("user-agent"),
       referer: request.headers.get("referer"),
       country: cdnCountry(request.headers),

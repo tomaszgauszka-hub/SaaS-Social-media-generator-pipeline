@@ -67,6 +67,10 @@ export const EnvSchema = z.object({
   META_GRAPH_API_VERSION: z.string().default("v23.0"),
   TIKTOK_CLIENT_KEY: z.string().optional(),
   TIKTOK_CLIENT_SECRET: z.string().optional(),
+  /** Visibility of TikTok posts. Unaudited apps can only post SELF_ONLY; public needs TikTok's app audit. */
+  TIKTOK_PRIVACY_LEVEL: z
+    .enum(["SELF_ONLY", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_CREATOR", "PUBLIC_TO_EVERYONE"])
+    .default("SELF_ONLY"),
 
   FFMPEG_PATH: z.string().default("ffmpeg"),
   FFPROBE_PATH: z.string().default("ffprobe"),

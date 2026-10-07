@@ -21,6 +21,7 @@ import type { PipelineContext } from "../context.ts";
 import { payloadString, type JobExecution } from "../job-types.ts";
 import { accountRef, flagReauthIfNeeded, loadSocialCredentials, publisherFor } from "../social.ts";
 import { enqueue } from "../outbox.ts";
+import { resolveLinkTarget } from "../variants.ts";
 
 const POLL_INTERVAL_MINUTES = 1;
 const MAX_POLLS = 30;
@@ -304,6 +305,7 @@ async function publishOrPoll(
     caption: pub.variant.caption ?? "",
     firstComment: pub.variant.firstComment,
     aiGenerated: pub.variant.aiGenerated || project.aiGenerated,
+    promotion: await promotionOf(ctx, project),
     link: linkUrl,
     idempotencyKey: `${pub.id}:${pub.sequence}`,
   };
@@ -374,6 +376,17 @@ async function publishOrPoll(
     externalUrl: result.externalUrl ?? null,
     mock: publisher.isMock,
   };
+}
+
+/** Commercial-content classification for platform disclosure toggles (same rule as caption disclosures). */
+async function promotionOf(
+  ctx: PipelineContext,
+  project: { productId: string | null; offerId: string | null },
+): Promise<PublishRequest["promotion"]> {
+  const target = await resolveLinkTarget(ctx.prisma, project);
+  if (!target) return null;
+  if (target.isAffiliate) return "THIRD_PARTY";
+  return target.isOwnProduct ? "OWN_BUSINESS" : null;
 }
 
 async function publicUrls(

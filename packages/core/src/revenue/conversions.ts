@@ -117,11 +117,40 @@ export interface RecordConversionResult {
   revenueDeltaMicros: Micros;
 }
 
+const PERSONAL_KEY =
+  /e-?mail|^(?:first|last|full|given|family|customer|buyer|user)?[_-]?name$|phone|mobile|(?:^|_)tel(?:ephone)?$|address|street|city|zip|postal|post_?code|^ip$|ip_?addr|user_?agent|^ua$|customer|buyer|shopper|birth|^dob$|gender|card|iban|ssn|passport/i;
+const EMAIL_VALUE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+const IP_VALUE = /^(?:\d{1,3}\.){3}\d{1,3}$|^[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7}$/i;
+
+/**
+ * Data minimisation for stored postback / CSV payloads: we need ids, amounts and statuses for attribution and
+ * audits — never the buyer. Keys that look personal and values that look like e-mail or IP addresses are
+ * replaced before anything is written.
+ */
+export function redactPersonalData(raw: Record<string, unknown>, depth = 0): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (PERSONAL_KEY.test(key)) {
+      out[key] = "[redacted]";
+    } else if (typeof value === "string") {
+      out[key] = EMAIL_VALUE.test(value) || IP_VALUE.test(value.trim()) ? "[redacted]" : value.slice(0, 500);
+    } else if (value && typeof value === "object" && !Array.isArray(value) && depth < 3) {
+      out[key] = redactPersonalData(value as Record<string, unknown>, depth + 1);
+    } else if (Array.isArray(value)) {
+      out[key] = "[list omitted]";
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 /** Idempotent per (program, externalId): repeats update status/amount and book adjustments. */
 export async function recordConversion(
   prisma: PrismaClient,
-  input: ConversionInput,
+  rawInput: ConversionInput,
 ): Promise<RecordConversionResult> {
+  const input = rawInput.raw ? { ...rawInput, raw: redactPersonalData(rawInput.raw) } : rawInput;
   return prisma.$transaction(async (tx) => {
     const attribution = await attributeConversion(tx, input);
     const fx = input.fxRateToUsd ?? 1;

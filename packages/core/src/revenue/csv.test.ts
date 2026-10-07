@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { mapStatus, mapType, mapWebhookPayload, parseCsv, parseMoney } from "./conversions.ts";
+import {
+  mapStatus,
+  mapType,
+  mapWebhookPayload,
+  parseCsv,
+  parseMoney,
+  redactPersonalData,
+} from "./conversions.ts";
 
 describe("CSV parsing", () => {
   it("handles quotes, escaped quotes, commas and newlines in fields", () => {
@@ -55,5 +62,41 @@ describe("value mapping", () => {
       currency: "USD",
     });
     expect(m.occurredAt.toISOString()).toBe("2026-10-05T10:00:00.000Z");
+  });
+});
+
+describe("personal data minimisation", () => {
+  it("redacts buyer data from stored postback / CSV payloads but keeps attribution fields", () => {
+    expect(
+      redactPersonalData({
+        transaction_id: "T-1",
+        sub_id: "abc123",
+        commission: "4.20",
+        product_name: "Cordless drill",
+        email: "jane@example.com",
+        customer_id: "C-998",
+        first_name: "Jane",
+        username: "jane99",
+        note: "contact jane@example.com",
+        ip: "203.0.113.7",
+        client: { ip_address: "203.0.113.7", device: "mobile" },
+        items: [{ sku: "X" }],
+        hotel: "not personal",
+      }),
+    ).toEqual({
+      transaction_id: "T-1",
+      sub_id: "abc123",
+      commission: "4.20",
+      product_name: "Cordless drill",
+      email: "[redacted]",
+      customer_id: "[redacted]",
+      first_name: "[redacted]",
+      username: "[redacted]",
+      note: "[redacted]",
+      ip: "[redacted]",
+      client: { ip_address: "[redacted]", device: "mobile" },
+      items: "[list omitted]",
+      hotel: "not personal",
+    });
   });
 });

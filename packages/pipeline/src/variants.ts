@@ -20,6 +20,8 @@ export interface LinkTarget {
   programDisclosure: string | null;
   /** a commission / referral relationship exists → advertising disclosure required */
   isAffiliate: boolean;
+  /** the brand's own product (promoting its own business) */
+  isOwnProduct: boolean;
 }
 
 /** Where the content sends people: affiliate link → offer landing page → product URL. */
@@ -69,6 +71,7 @@ export async function resolveLinkTarget(
     appendUtm: own,
     programDisclosure: isAffiliate ? (program?.disclosureText ?? null) : null,
     isAffiliate,
+    isOwnProduct: own,
   };
 }
 

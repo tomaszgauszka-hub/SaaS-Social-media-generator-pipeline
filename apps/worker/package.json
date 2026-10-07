@@ -8,7 +8,6 @@
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "demo": "tsx src/cli/demo.ts",
-    "strategy:run": "tsx src/cli/strategy.ts",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {

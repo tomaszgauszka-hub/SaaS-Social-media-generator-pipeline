@@ -72,14 +72,18 @@ async function main() {
   });
 
   console.log(`1) Ideation + production (simulated date ${clock.now().toISOString().slice(0, 10)})`);
-  for (const brandId of brandIds) await requestIdeation(prisma, { brandId, count, now: clock.now() });
+  const jobIds: string[] = [];
+  for (const brandId of brandIds)
+    jobIds.push((await requestIdeation(prisma, { brandId, count, now: clock.now() })).jobId);
   await dispatcher.runUntilIdle({ advanceUpToMs: 15 * 60_000 });
 
+  // only this run's ideation jobs (never results left over from earlier runs)
   const ideationJobs = await prisma.generationJob.findMany({
-    where: { type: "strategy.ideate", brandId: { in: brandIds }, status: "SUCCEEDED" },
-    orderBy: { finishedAt: "desc" },
-    take: brandIds.length,
+    where: { id: { in: jobIds } },
+    include: { brand: { select: { name: true } } },
   });
+  for (const j of ideationJobs.filter((x) => x.status !== "SUCCEEDED"))
+    console.log(`   ✗ ideation for ${j.brand?.name ?? j.brandId} ended ${j.status}: ${j.lastError ?? ""}`);
   const projectIds = ideationJobs.flatMap(
     (j) => (j.result as { selectedProjectIds?: string[] } | null)?.selectedProjectIds ?? [],
   );

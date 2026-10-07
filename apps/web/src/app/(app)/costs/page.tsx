@@ -30,37 +30,48 @@ export default async function CostsPage({ searchParams }: { searchParams: Promis
   const prisma = db();
   const e = env();
   const guard = new BudgetGuard(prisma, { hardDailyMicros: usdToMicros(e.HARD_DAILY_BUDGET_USD) });
-  const [groups, daily, brands, limits, spendWs, approved, published, blocked] = await Promise.all([
-    prisma.$queryRaw<UsageGroup[]>`
+  const [groups, daily, brands, limits, spendWs, approved, published, blocked, produced, conversions] =
+    await Promise.all([
+      prisma.$queryRaw<UsageGroup[]>`
       SELECT provider, model, operation::text AS operation, "isMock" AS is_mock, COUNT(*) AS calls,
              COALESCE(SUM(COALESCE("actualCostUsd", "estimatedCostUsd")), 0) AS cost
       FROM "GenerationUsage"
       WHERE "workspaceId" = ${user.workspaceId} AND status IN ('RESERVED', 'COMMITTED') AND "createdAt" >= ${p.from} AND "createdAt" < ${p.to}
       GROUP BY provider, model, operation, "isMock"
       ORDER BY cost DESC`,
-    profitability(prisma, {
-      workspaceId: user.workspaceId,
-      from: p.from,
-      to: p.to,
-      includeSimulated: true,
-      dimension: "day",
-      timeZone: tz,
-    }),
-    prisma.brand.findMany({
-      where: { workspaceId: user.workspaceId },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, timezone: true },
-    }),
-    guard.getLimits(prisma, user.workspaceId, null),
-    guard.getSpend(prisma, { workspaceId: user.workspaceId, brandId: null, projectId: null, timeZone: tz }),
-    prisma.contentProject.count({
-      where: { workspaceId: user.workspaceId, approvedAt: { gte: p.from, lt: p.to } },
-    }),
-    prisma.publication.count({
-      where: { workspaceId: user.workspaceId, status: "PUBLISHED", publishedAt: { gte: p.from, lt: p.to } },
-    }),
-    prisma.contentProject.count({ where: { workspaceId: user.workspaceId, status: "BUDGET_BLOCKED" } }),
-  ]);
+      profitability(prisma, {
+        workspaceId: user.workspaceId,
+        from: p.from,
+        to: p.to,
+        includeSimulated: true,
+        dimension: "day",
+        timeZone: tz,
+      }),
+      prisma.brand.findMany({
+        where: { workspaceId: user.workspaceId },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, timezone: true },
+      }),
+      guard.getLimits(prisma, user.workspaceId, null),
+      guard.getSpend(prisma, { workspaceId: user.workspaceId, brandId: null, projectId: null, timeZone: tz }),
+      prisma.contentProject.count({
+        where: { workspaceId: user.workspaceId, approvedAt: { gte: p.from, lt: p.to } },
+      }),
+      prisma.publication.count({
+        where: { workspaceId: user.workspaceId, status: "PUBLISHED", publishedAt: { gte: p.from, lt: p.to } },
+      }),
+      prisma.contentProject.count({ where: { workspaceId: user.workspaceId, status: "BUDGET_BLOCKED" } }),
+      prisma.contentProject.count({
+        where: { workspaceId: user.workspaceId, createdAt: { gte: p.from, lt: p.to } },
+      }),
+      prisma.conversion.count({
+        where: {
+          workspaceId: user.workspaceId,
+          status: { not: "REVERSED" },
+          occurredAt: { gte: p.from, lt: p.to },
+        },
+      }),
+    ]);
   const brandBudgets = await Promise.all(
     brands.map(async (b) => ({
       brand: b,
@@ -95,11 +106,16 @@ export default async function CostsPage({ searchParams }: { searchParams: Promis
           </FilterLink>
         ))}
       </div>
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <Kpi
           label="AI spend"
           value={usd(total)}
           hint={`${usd(real)} real · ${usd(total - real)} simulated`}
+        />
+        <Kpi
+          label="Cost / content"
+          value={produced ? usd(Math.round(total / produced)) : "—"}
+          hint={`${produced} items started`}
         />
         <Kpi
           label="Cost / approved"
@@ -111,6 +127,11 @@ export default async function CostsPage({ searchParams }: { searchParams: Promis
           label="Cost / published"
           value={published ? usd(Math.round(total / published)) : "—"}
           hint={`${published} posts`}
+        />
+        <Kpi
+          label="Cost / conversion"
+          value={conversions ? usd(Math.round(total / conversions)) : "—"}
+          hint={`${num(conversions)} conversions`}
         />
         <Kpi
           label="Real spend today"

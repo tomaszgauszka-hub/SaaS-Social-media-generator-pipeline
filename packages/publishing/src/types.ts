@@ -44,6 +44,11 @@ export interface PublishRequest {
   firstComment?: string | null;
   /** platform AI-content label where supported */
   aiGenerated: boolean;
+  /**
+   * Commercial content: THIRD_PARTY = promotes someone else's product for an incentive (affiliate commission,
+   * paid lead), OWN_BUSINESS = promotes the brand's own product. Sets platform disclosure toggles where supported.
+   */
+  promotion?: "THIRD_PARTY" | "OWN_BUSINESS" | null;
   /** clickable link (Facebook) */
   link?: string | null;
   idempotencyKey: string;

@@ -120,19 +120,34 @@ function shortFact(claim: string, maxWords = 8): string {
 }
 
 export function mockIdeas(ctx: IdeasContext): IdeasOutput {
-  const ideas: IdeaOut[] = [];
   const avoid = new Set(ctx.avoidTitles.map((t) => t.toLowerCase()));
-  let attempt = 0;
-  while (ideas.length < ctx.count && attempt < ctx.count * 6) {
-    const p = ctx.products[attempt % ctx.products.length]!;
-    const rnd = seededRandom(`${p.id}:${attempt}`);
-    const angleList: ContentAngle[] = p.priceText ? [...ANGLES, "deal_alert"] : ANGLES;
-    const angle = angleList[(attempt + Math.floor(rnd() * angleList.length)) % angleList.length]!;
-    const hook = hookFor(angle, p, attempt);
-    const title = `${shortName(p.title)}: ${angle.replace(/_/g, " ")}`;
-    attempt++;
-    if (avoid.has(title.toLowerCase()) || avoid.has(stripMarks(hook.text).toLowerCase())) continue;
-    avoid.add(title.toLowerCase());
+  // Every product × angle combination is a candidate. Unused combinations come first, then ones whose hook
+  // was not used recently; repeats get a "(take N)" title and alternate hook wording, so a long-running brand
+  // never runs out of (mock) ideas — QA still flags hooks that are too similar to recent ones.
+  const candidates = ctx.products
+    .flatMap((p) =>
+      (p.priceText ? [...ANGLES, "deal_alert" as const] : ANGLES).map((angle) => ({ p, angle })),
+    )
+    .map(({ p, angle }) => {
+      const base = `${shortName(p.title)}: ${angle.replace(/_/g, " ")}`;
+      let take = 1;
+      while (avoid.has((take === 1 ? base : `${base} (take ${take})`).toLowerCase())) take++;
+      const hook = hookFor(angle, p, take - 1);
+      return {
+        p,
+        angle,
+        take,
+        hook,
+        title: take === 1 ? base : `${base} (take ${take})`,
+        freshHook: !avoid.has(stripMarks(hook.text).toLowerCase()),
+        order: seededRandom(`${p.id}:${angle}`)(),
+      };
+    })
+    .sort((a, b) => a.take - b.take || Number(b.freshHook) - Number(a.freshHook) || a.order - b.order);
+
+  const ideas: IdeaOut[] = [];
+  for (const { p, angle, hook, title } of candidates.slice(0, ctx.count)) {
+    const rnd = seededRandom(`${title}:${ideas.length}`);
     ideas.push({
       productId: p.id,
       title: truncate(title, 140),
