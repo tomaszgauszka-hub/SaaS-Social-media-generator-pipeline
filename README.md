@@ -16,10 +16,10 @@ pnpm db:seed                 # Demo Beauty / Demo Tools / Demo SaaS
 
 ## Commands
 
-| Command | Purpose |
-|---|---|
-| `pnpm dev` | Next.js dashboard on http://localhost:3000 |
-| `pnpm worker` | Background worker (job dispatcher + BullMQ processors) |
-| `pnpm test` | Unit tests |
-| `pnpm test:integration` | Integration tests (PostgreSQL required) |
-| `pnpm typecheck` / `pnpm lint` | Static checks |
+| Command                        | Purpose                                                |
+| ------------------------------ | ------------------------------------------------------ |
+| `pnpm dev`                     | Next.js dashboard on http://localhost:3000             |
+| `pnpm worker`                  | Background worker (job dispatcher + BullMQ processors) |
+| `pnpm test`                    | Unit tests                                             |
+| `pnpm test:integration`        | Integration tests (PostgreSQL required)                |
+| `pnpm typecheck` / `pnpm lint` | Static checks                                          |
