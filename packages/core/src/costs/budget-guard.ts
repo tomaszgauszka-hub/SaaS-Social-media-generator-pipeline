@@ -169,10 +169,9 @@ export class BudgetGuard {
     input: Omit<ReserveInput, "idempotencyKey" | "provider" | "model" | "operation"> & { db?: DbClient },
   ): Promise<BudgetDecision> {
     const db = input.db ?? this.prisma;
-    const [limits, timeZone] = await Promise.all([
-      this.getLimits(db, input.workspaceId, input.brandId),
-      this.timeZoneFor(db, input.workspaceId),
-    ]);
+    // sequential: `db` may be an interactive transaction (one connection, no concurrent queries)
+    const limits = await this.getLimits(db, input.workspaceId, input.brandId);
+    const timeZone = await this.timeZoneFor(db, input.workspaceId);
     const spend = await this.getSpend(db, {
       workspaceId: input.workspaceId,
       brandId: input.brandId,
@@ -228,6 +227,8 @@ export class BudgetGuard {
             estimatedCostUsd: microsToDecimal(input.estimatedMicros),
             idempotencyKey: input.idempotencyKey,
             promptVersionId: input.promptVersionId ?? null,
+            // the guard's clock (simulated in demos/tests) so spend windows and reports line up
+            createdAt: this.now(),
             ...(input.metadata ? { metadata: toJson(input.metadata) as Prisma.InputJsonValue } : {}),
           },
         });

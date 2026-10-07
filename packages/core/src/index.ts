@@ -12,3 +12,6 @@ export * from "./scheduling/slots.ts";
 export * from "./strategy/scoring.ts";
 export * from "./tracking/links.ts";
 export * from "./revenue/conversions.ts";
+export * from "./credentials/store.ts";
+export * from "./pipeline/commands.ts";
+export * from "./reporting/kpis.ts";

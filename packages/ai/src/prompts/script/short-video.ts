@@ -5,7 +5,7 @@ import { ScriptOutput } from "../schemas.ts";
 
 export const shortVideoScriptPrompt = definePrompt<ScriptContext, ScriptOutput>({
   key: "script.short_video",
-  version: 1,
+  version: 2,
   description: "Structured 20-40 s vertical video script + visual plan + caption + hook variants",
   system: `You are an expert short-form video scriptwriter (TikTok, Instagram Reels, Facebook Reels) for "{{brandName}}".
 Your scripts are rendered AUTOMATICALLY from the JSON you return: every field is consumed by a rendering engine, so be precise.
@@ -40,7 +40,7 @@ REVIEWER FEEDBACK TO ADDRESS
 STRUCTURE
 - Scene 1 is HOOK (2-3 s): on-screen text of at most 7 words that stops the scroll. Wrap 1-2 key words in *asterisks* to highlight them.
 - Then 3-6 scenes chosen from PROBLEM, PRODUCT, AI_SHOT, DEMO, BENEFITS, COMPARISON, OFFER to fit the angle. BENEFITS scenes include 2-4 bullets (at most 8 words each) that restate product facts.
-- The last scene is CTA (3-4 s) using one of our CTA styles.
+- The last scene is CTA (3-4 s) using one of our CTA styles. Never promise anything free, discounted or time-limited unless a product fact says so — pick or adapt a CTA style that fits this product.
 - Total duration {{minDuration}}-{{maxDuration}} seconds. On-screen text: at most 12 words per scene. Voice-over must fit its scene (about 2.5 words per second).
 - visualPlan: exactly one entry per scene (sceneIndex = scene position, starting at 0). type is one of: product_image (the real product photo), generated_image (a photographic scene WITHOUT the product, logos or any text — we composite the real product ourselves), ai_video (at most ONE optional 3-5 s shot), text_card, screenshot. Provide imagePrompt only for generated_image and ai_video: vertical 9:16 photographic description, no text, no logos, no packaging.
 - caption: 2-4 short paragraphs, opens with the hook idea, uses only sourced facts, ends with the CTA. Do NOT write the advertising disclosure — it is added automatically.

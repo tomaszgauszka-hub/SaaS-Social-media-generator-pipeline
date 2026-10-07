@@ -34,6 +34,9 @@ export interface RenderResult {
 
 const fmt = (n: number) => Number(n.toFixed(4)).toString();
 
+/** Bump when the final pass (typography, overlays, audio mix) renders identical input differently. */
+export const COMPOSITOR_VERSION = "2";
+
 export interface ResolvedAudio {
   music?: string;
   voiceover?: string;

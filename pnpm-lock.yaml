@@ -120,6 +120,9 @@ importers:
       '@cre/pipeline':
         specifier: workspace:*
         version: link:../../packages/pipeline
+      '@cre/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
       '@cre/shared':
         specifier: workspace:*
         version: link:../../packages/shared

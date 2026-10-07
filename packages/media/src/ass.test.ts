@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyHighlight,
+  applyHighlightLines,
   assColor,
   assInlineColor,
   assTime,
@@ -143,5 +144,17 @@ describe("document", () => {
     const path = roundedRectPath(400, 120, 60);
     expect(path.startsWith("m 60 0")).toBe(true);
     expect(path.match(/ b /g)).toHaveLength(4);
+  });
+});
+
+describe("applyHighlightLines", () => {
+  it("keeps a highlight that wraps onto the next line and never renders asterisks", () => {
+    const out = applyHighlightLines(["MEET THE *20V", "CORDLESS DRILL*"], "#FF0000", "#FFFFFF");
+    expect(out).not.toContain("*");
+    expect(out).toBe("MEET THE {\\c&H0000FF&}20V\\NCORDLESS DRILL{\\c&HFFFFFF&}");
+  });
+
+  it("drops unbalanced markup", () => {
+    expect(applyHighlightLines(["5 * 3 is", "fifteen"], "#FF0000", "#FFFFFF")).toBe("5  3 is\\Nfifteen");
   });
 });

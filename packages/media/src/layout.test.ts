@@ -155,6 +155,21 @@ describe("layoutStoryboard", () => {
   });
 });
 
+describe("text palette", () => {
+  it("uses dark, readable text on light brand backdrops", () => {
+    const light = { ...brand, primary: "#E8547A", accent: "#F59BB4", background: "#FFF7FA", text: "#2A1A20" };
+    const project = layoutStoryboard(storyboard({ brand: light }));
+    const productScene = project.scenes[1]!;
+    const headline = project.texts.find((t) => t.id === "product-headline")!;
+    expect(productScene.background.type).toBe("gradient");
+    if (productScene.background.type === "gradient") {
+      const mid = mixHex(productScene.background.colors[0], productScene.background.colors[1], 0.5);
+      expect(contrastRatio(headline.color, mid)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(headline.accentColor, mid)).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
+
 describe("colour helpers", () => {
   it("picks readable text colours", () => {
     expect(readableOn("#FFFFFF")).toBe("#111111");

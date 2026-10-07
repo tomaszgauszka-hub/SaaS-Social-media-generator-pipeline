@@ -7,7 +7,7 @@ exports[`prompts > prompt versions are unique and hashes are pinned (edit a prom
   "qa.text_review@v1": "cf5f6616dc76fe3d",
   "scoring.classify@v1": "7b80de3ff140c8ff",
   "scoring.score@v1": "3371fa3eccfb4e29",
-  "script.short_video@v1": "d472fec3504ee9e4",
+  "script.short_video@v2": "e979221f9ba66610",
   "strategy.ideas@v1": "aafb8d0f44ef0891",
   "strategy.research@v1": "e8067419ccd665fd",
 }

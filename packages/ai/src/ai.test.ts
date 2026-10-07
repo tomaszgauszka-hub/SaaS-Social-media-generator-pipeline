@@ -212,7 +212,7 @@ describe("mock LLM", () => {
     const llm = new MockLLMProvider({ costMode: "simulate" });
     const run = await runPrompt(llm, shortVideoScriptPrompt, scriptCtx);
     expect(run.data.hook.length).toBeGreaterThan(3);
-    expect(run.promptId).toBe("script.short_video@v1");
+    expect(run.promptId).toBe(shortVideoScriptPrompt.id);
     const usage = sumUsage(run.calls);
     expect(usage.inputTokens).toBeGreaterThan(500);
     expect(

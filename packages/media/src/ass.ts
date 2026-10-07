@@ -181,11 +181,38 @@ export function applyHighlight(
   baseHex: string,
   outline?: { accent: string; base: string },
 ): string {
-  const accent = assInlineColor(accentHex);
-  const base = assInlineColor(baseHex);
-  const on = outline ? `\\3c${assInlineColor(outline.accent)}` : "";
-  const off = outline ? `\\3c${assInlineColor(outline.base)}` : "";
-  return sanitizeAssText(text).replace(/\*([^*]+)\*/g, `{\\c${accent}${on}}$1{\\c${base}${off}}`);
+  return applyHighlightLines([text], accentHex, baseHex, outline);
+}
+
+/**
+ * Highlight markup over wrapped lines (joined with `\N`): a `*span*` may continue on the next line.
+ * Unbalanced markup is dropped instead of rendering literal asterisks.
+ */
+export function applyHighlightLines(
+  lines: readonly string[],
+  accentHex: string,
+  baseHex: string,
+  outline?: { accent: string; base: string },
+): string {
+  const open = `{\\c${assInlineColor(accentHex)}${outline ? `\\3c${assInlineColor(outline.accent)}` : ""}}`;
+  const close = `{\\c${assInlineColor(baseHex)}${outline ? `\\3c${assInlineColor(outline.base)}` : ""}}`;
+  const clean = lines.map((l) => sanitizeAssText(l));
+  const balanced = clean.reduce((n, l) => n + (l.match(/\*/g)?.length ?? 0), 0) % 2 === 0;
+  let inside = false;
+  return clean
+    .map((line) => {
+      if (!balanced) return line.replace(/\*/g, "");
+      let out = "";
+      for (const ch of line) {
+        if (ch !== "*") out += ch;
+        else {
+          inside = !inside;
+          out += inside ? open : close;
+        }
+      }
+      return out;
+    })
+    .join("\\N");
 }
 
 export function animationTags(
@@ -310,10 +337,7 @@ export function textOverlayEvent(t: TextOverlay): AssEvent {
   const duration = t.endMs - t.startMs;
   const raw = t.uppercase ? t.text.toUpperCase() : t.text;
   const outline = t.accentOutlineColor ? { accent: t.accentOutlineColor, base: t.outlineColor } : undefined;
-  let body = raw
-    .split("\n")
-    .map((line) => applyHighlight(line, t.accentColor, t.color, outline))
-    .join("\\N");
+  let body = applyHighlightLines(raw.split("\n"), t.accentColor, t.color, outline);
   if (t.animation === "words") body = wordsReveal(body);
   const tags = [
     "\\q2",

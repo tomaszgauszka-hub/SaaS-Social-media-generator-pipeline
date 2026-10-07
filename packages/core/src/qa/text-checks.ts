@@ -60,8 +60,12 @@ export interface TextQaInput {
 const PLACEHOLDER =
   /\{\{|\}\}|\[(?:product|brand|insert|price|name|link|url|cta|todo)[^\]]*\]|<(?:insert|product|brand)[^>]*>|lorem ipsum|\bTODO\b|\bTBD\b|\bXXX\b|\bundefined\b|\bNaN\b|\[object Object\]/i;
 
+/** "free" as an offer (not "fragrance-free", "hands-free"). */
+export const FREE_OFFER = /(?<![\p{L}\p{N}-])free(?![\p{L}\p{N}-])/iu;
+
 /** Claim patterns that need a sourced fact behind them. */
 const RISKY_CLAIMS: { re: RegExp; label: string }[] = [
+  { re: FREE_OFFER, label: "free-offer claim" },
   { re: /\b(?:guarantee[sd]?|guaranteed)\b/i, label: "guarantee" },
   { re: /\b(?:best|#1|number one|top[- ]rated|best[- ]selling)\b/i, label: "superlative" },
   { re: /\b(?:cheapest|lowest price|best price|best deal)\b/i, label: "price superlative" },
@@ -218,11 +222,14 @@ export function runTextChecks(input: TextQaInput): QaIssue[] {
   for (const b of blocks) {
     for (const { re, label } of RISKY_CLAIMS) {
       const m = re.exec(b.text);
-      if (m && !factsText.includes(m[0].toLowerCase()) && !reported.has(`${label}:${m[0].toLowerCase()}`)) {
+      // the free-offer pattern is checked against the facts as a pattern ("fragrance-free" is not a free offer)
+      const supported =
+        re === FREE_OFFER ? FREE_OFFER.test(factsText) : factsText.includes(m?.[0].toLowerCase() ?? "");
+      if (m && !supported && !reported.has(`${label}:${m[0].toLowerCase()}`)) {
         reported.add(`${label}:${m[0].toLowerCase()}`);
         issues.push({
           code: "unsupported_claim",
-          severity: label.includes("medical") || label.includes("personal") ? "blocker" : "major",
+          severity: /medical|personal|free/.test(label) ? "blocker" : "major",
           message: `Unsupported ${label}: "${m[0]}"`,
           field: b.field,
         });

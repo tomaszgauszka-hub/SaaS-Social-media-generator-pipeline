@@ -27,8 +27,16 @@ export class CostLedger {
     reserve: ReserveInput,
     execute: () => Promise<T>,
     settle: (result: T) => PaidOperationSettlement,
+    /** usage consumed by a failed call (e.g. invalid structured output after paid attempts) → committed */
+    settleError?: (err: unknown) => PaidOperationSettlement | null,
   ): Promise<T> {
     const reservation = await this.guard.reserve(reserve);
+    if (reservation.reused && reservation.status !== "RESERVED") {
+      this.logger?.warn(
+        { event: "COST", usageId: reservation.usageId },
+        "usage key already settled — re-reserving is not possible",
+      );
+    }
     this.logger?.info(
       {
         event: "COST",
@@ -47,7 +55,17 @@ export class CostLedger {
     try {
       result = await execute();
     } catch (err) {
-      if (err instanceof ProviderError && err.charged) {
+      const partial = settleError?.(err) ?? null;
+      if (partial) {
+        await this.guard.commit(reservation.usageId, {
+          ...partial,
+          metadata: { ...(partial.metadata ?? {}), failed: true, error: (err as Error).message },
+        });
+        this.logger?.warn(
+          { event: "COST", usageId: reservation.usageId },
+          "call failed after consuming usage — committed actual usage",
+        );
+      } else if (err instanceof ProviderError && err.charged) {
         await this.guard.commit(reservation.usageId, {
           metadata: { failedButCharged: true, error: err.message },
         });

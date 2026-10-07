@@ -190,7 +190,7 @@ export const BRANDS: SeedBrand[] = [
         kind: "AFFILIATE",
         platform: null,
         text: "#ad · affiliate link",
-        placement: "CAPTION_START",
+        placement: "CAPTION_AND_ON_SCREEN",
         jurisdiction: "US-FTC",
       },
       {
@@ -320,7 +320,7 @@ export const BRANDS: SeedBrand[] = [
         kind: "AFFILIATE",
         platform: null,
         text: "#ad · affiliate link",
-        placement: "CAPTION_START",
+        placement: "CAPTION_AND_ON_SCREEN",
         jurisdiction: "US-FTC",
       },
       {
@@ -454,7 +454,7 @@ export const BRANDS: SeedBrand[] = [
         kind: "AFFILIATE",
         platform: null,
         text: "#ad | affiliate link",
-        placement: "CAPTION_START",
+        placement: "CAPTION_AND_ON_SCREEN",
         jurisdiction: "US-FTC / EU-UCPD",
       },
     ],

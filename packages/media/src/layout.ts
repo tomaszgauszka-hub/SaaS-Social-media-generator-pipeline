@@ -191,6 +191,14 @@ function paletteFor(bg: Background, brand: BrandStyle, L: LayoutContext): TextPa
   if (bg.type === "gradient" || bg.type === "color") {
     const mid = bg.type === "gradient" ? mixHex(bg.colors[0], bg.colors[1], 0.5) : bg.color;
     const outlineColor = mixHex(mid, "#000000", 0.7);
+    if (luminance(mid) > 0.45) {
+      // light backdrop: dark text with a soft light halo; accent = brand colour darkened until it reads
+      const halo = mixHex(mid, "#FFFFFF", 0.6);
+      let accent = brand.primary;
+      for (let k = 0.15; contrastRatio(accent, mid) < 3 && k <= 0.75; k += 0.15)
+        accent = mixHex(brand.primary, "#000000", k);
+      return { color: "#1A1A1A", outlineColor: halo, accent, accentOutline: halo };
+    }
     if (luminance(mid) > 0.18) {
       return { color: "#FFFFFF", outlineColor, accent: "#111111", accentOutline: "#FFFFFF" };
     }

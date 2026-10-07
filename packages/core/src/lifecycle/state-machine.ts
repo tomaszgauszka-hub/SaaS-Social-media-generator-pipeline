@@ -85,7 +85,7 @@ export const contentMachine = defineStateMachine<ContentStatus>("ContentProject"
 });
 
 export const variantMachine = defineStateMachine<VariantStatus>("ContentVariant", {
-  PENDING: ["READY", "FAILED", "SKIPPED", "ARCHIVED"],
+  PENDING: ["READY", "REJECTED", "FAILED", "SKIPPED", "ARCHIVED"],
   READY: ["APPROVED", "REJECTED", "SKIPPED", "PENDING", "ARCHIVED"],
   APPROVED: ["SCHEDULED", "READY", "PENDING", "SKIPPED", "ARCHIVED"],
   REJECTED: ["PENDING", "READY", "ARCHIVED"],

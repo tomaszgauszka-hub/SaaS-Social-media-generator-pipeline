@@ -77,6 +77,35 @@ describe("text QA", () => {
     );
   });
 
+  it("blocks unsupported free offers but not '-free' product attributes", () => {
+    const free = runTextChecks(input({ content: { cta: "Try it free — link in bio" } }));
+    expect(free.find((i) => i.code === "unsupported_claim")?.severity).toBe("blocker");
+    const attribute = runTextChecks(
+      input({
+        content: { onScreenTexts: ["Fragrance-free and hands-free"] },
+        product: {
+          title: "Serum",
+          priceMicros: null,
+          priceFresh: false,
+          facts: [{ id: "f1", claim: "Fragrance-free formula" }],
+        },
+      }),
+    );
+    expect(attribute.some((i) => i.message.includes("free-offer"))).toBe(false);
+    const sourced = runTextChecks(
+      input({
+        content: { cta: "Try it free — link in bio" },
+        product: {
+          title: "Notes app",
+          priceMicros: null,
+          priceFresh: false,
+          facts: [{ id: "f1", claim: "14-day free trial, no credit card required" }],
+        },
+      }),
+    );
+    expect(sourced.some((i) => i.message.includes("free-offer"))).toBe(false);
+  });
+
   it("requires the affiliate disclosure at the start of every platform caption", () => {
     const v = input().variants[0]!;
     expect(codes(input({ variants: [{ ...v, caption: "Great drill. Link in bio." }] }))).toContain(

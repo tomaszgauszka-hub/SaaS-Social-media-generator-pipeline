@@ -12,10 +12,11 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "@cre/shared": "workspace:*",
     "@cre/config": "workspace:*",
-    "@cre/db": "workspace:*",
     "@cre/core": "workspace:*",
-    "@cre/pipeline": "workspace:*"
+    "@cre/db": "workspace:*",
+    "@cre/pipeline": "workspace:*",
+    "@cre/providers": "workspace:*",
+    "@cre/shared": "workspace:*"
   }
 }

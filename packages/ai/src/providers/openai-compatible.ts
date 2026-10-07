@@ -1,5 +1,5 @@
 import { llmCostMicros } from "@cre/config";
-import { FatalError, ProviderError } from "@cre/shared";
+import { FatalError, ProviderError, type Micros } from "@cre/shared";
 import { classifyPrompt, scorePrompt } from "../prompts/scoring/generic.ts";
 import { renderPrompt } from "../prompts/registry.ts";
 import { runStructured } from "../structured.ts";
@@ -11,6 +11,7 @@ import type {
   LlmCostEstimateRequest,
   LlmHealth,
   LLMProvider,
+  LlmUsage,
   ScoreRequest,
   StructuredRequest,
   StructuredResult,
@@ -84,6 +85,10 @@ export class OpenAICompatibleProvider implements LLMProvider {
       outputTokens: req.maxOutputTokens,
     });
     return { provider: this.name, model, estimatedMicros: perCall * (req.calls ?? 1), isMock: false };
+  }
+
+  costForUsage(model: string, usage: LlmUsage): Micros {
+    return llmCostMicros(this.opts.pricingProvider, model, usage);
   }
 
   async generateText(req: GenerateTextRequest): Promise<LlmCallResult> {

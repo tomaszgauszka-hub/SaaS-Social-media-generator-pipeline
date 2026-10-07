@@ -1,5 +1,5 @@
 import { llmCostMicros, MOCK_SIMULATES } from "@cre/config";
-import { estimateTokens, ProviderError, sleep, TimeoutError } from "@cre/shared";
+import { estimateTokens, ProviderError, sleep, TimeoutError, type Micros } from "@cre/shared";
 import { MOCK_GENERATORS } from "../mock/generators.ts";
 import { classifyPrompt, scorePrompt } from "../prompts/scoring/generic.ts";
 import { renderPrompt } from "../prompts/registry.ts";
@@ -12,6 +12,7 @@ import type {
   LlmCostEstimateRequest,
   LlmHealth,
   LLMProvider,
+  LlmUsage,
   ScoreRequest,
   StructuredRequest,
   StructuredResult,
@@ -66,6 +67,12 @@ export class MockLLMProvider implements LLMProvider {
       estimatedMicros: perCall * (req.calls ?? 1),
       isMock: true,
     };
+  }
+
+  costForUsage(_model: string, usage: LlmUsage): Micros {
+    return this.opts.costMode === "zero"
+      ? 0
+      : llmCostMicros(MOCK_SIMULATES.llm.provider, MOCK_SIMULATES.llm.model, usage);
   }
 
   async generateText(req: GenerateTextRequest): Promise<LlmCallResult> {

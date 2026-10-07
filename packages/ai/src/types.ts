@@ -97,6 +97,8 @@ export interface LLMProvider {
   readonly defaultModel: string;
   healthCheck(): Promise<LlmHealth>;
   estimateCost(req: LlmCostEstimateRequest): LlmCostEstimate;
+  /** cost of actual token usage (provider-reported tokens, incl. cache hits) */
+  costForUsage(model: string, usage: LlmUsage): Micros;
   /** single completion (= execute) */
   generateText(req: GenerateTextRequest): Promise<LlmCallResult>;
   generateStructured<T>(req: StructuredRequest<T>): Promise<StructuredResult<T>>;

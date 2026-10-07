@@ -117,6 +117,7 @@ export async function requeueJob(
   jobId: string,
   reason: string,
   userId?: string | null,
+  now: Date = new Date(),
 ): Promise<boolean> {
   const res = await db.generationJob.updateMany({
     where: { id: jobId, status: { in: ["FAILED", "DEAD_LETTER", "BUDGET_BLOCKED", "CANCELLED"] } },
@@ -128,7 +129,7 @@ export async function requeueJob(
       finishedAt: null,
       lastError: null,
       errorClass: null,
-      runAt: new Date(),
+      runAt: now,
       dispatchCount: { increment: 1 },
     },
   });

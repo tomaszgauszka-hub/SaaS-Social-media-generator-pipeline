@@ -149,6 +149,7 @@ export interface RegenerateInput {
   note?: string;
   /** system-initiated (QA auto-reject) vs user request */
   actor?: "USER" | "SYSTEM";
+  now?: Date;
 }
 
 const JOB_FOR_ENTRY: Partial<Record<ContentStatus, JobType>> = {
@@ -219,8 +220,21 @@ export async function requestRegeneration(
         failureReason: null,
       },
     });
+    const newCopy =
+      input.scope === "ENTIRE" ||
+      input.scope === "SCRIPT" ||
+      input.scope === "HOOK" ||
+      input.scope === "CAPTION";
     for (const v of project.variants.filter((x) => ["READY", "REJECTED", "SKIPPED"].includes(x.status))) {
-      await transitionVariant(tx, { variantId: v.id, from: v.status, to: "PENDING" });
+      await transitionVariant(tx, {
+        variantId: v.id,
+        from: v.status,
+        to: "PENDING",
+        // new copy was requested → owner caption edits no longer apply
+        ...(newCopy
+          ? { data: { overrides: toJson(unlockCaption(v.overrides)) as Prisma.InputJsonValue } }
+          : {}),
+      });
     }
     await tx.approval.create({
       data: {
@@ -252,6 +266,7 @@ export async function requestRegeneration(
         revision: nextRevision,
       },
       idempotencyKey: idempotencyKey("regen", { projectId: project.id, revision: nextRevision }),
+      runAt: input.now ?? new Date(),
       workspaceId: project.workspaceId,
       brandId: project.brandId,
       projectId: project.id,
@@ -268,16 +283,32 @@ export interface EditInput {
   cta?: string;
   caption?: string;
   variantCaptions?: Record<string, string>;
+  now?: Date;
 }
 
+/** Caption lock flag lives in ContentVariant.overrides next to experiment-arm overrides. */
+function unlockCaption(overrides: Prisma.JsonValue | null): Record<string, unknown> {
+  const o = { ...((overrides ?? {}) as Record<string, unknown>) };
+  delete o.captionLocked;
+  return o;
+}
+
+const plain = (t: string | null | undefined) =>
+  (t ?? "")
+    .replace(/\*/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .toLowerCase();
+
 /**
- * Owner text edits. On-screen text (hook / CTA) → re-render (final pass only, scenes cached);
- * captions only → re-run QA. Edits are logged as EDITED approvals.
+ * Owner text edits. On-screen text (hook / CTA) → asset check (only a changed voice-over line is re-generated)
+ * → re-render (scenes cached); captions only → re-run QA. Edited captions are locked so re-renders keep them.
+ * Edits are logged as EDITED approvals.
  */
 export async function editContentText(
   prisma: PrismaClient,
   input: EditInput,
-): Promise<{ next: "RENDERING" | "QA" }> {
+): Promise<{ next: "GENERATING_ASSETS" | "QA" }> {
   return prisma.$transaction(async (tx) => {
     const project = await loadForDecision(tx, input.projectId);
     if (project.status !== "WAITING_APPROVAL")
@@ -286,19 +317,45 @@ export async function editContentText(
       (input.hook !== undefined && input.hook !== project.hook) ||
       (input.cta !== undefined && input.cta !== project.cta);
     const scenes = await tx.scene.findMany({ where: { projectId: project.id }, orderBy: { index: "asc" } });
-    if (input.hook !== undefined && scenes[0])
-      await tx.scene.update({ where: { id: scenes[0].id }, data: { onScreenText: input.hook } });
+    const hookScene = scenes[0];
+    if (input.hook !== undefined && hookScene) {
+      // keep the narration in sync when the voice-over simply spoke the hook
+      const speaksHook = plain(hookScene.voiceoverText) === plain(project.hook);
+      await tx.scene.update({
+        where: { id: hookScene.id },
+        data: {
+          onScreenText: input.hook,
+          ...(speaksHook ? { voiceoverText: input.hook.replace(/\*/g, "") } : {}),
+        },
+      });
+    }
     const ctaScene = scenes.findLast((s) => s.kind === "CTA");
-    if (input.cta !== undefined && ctaScene)
-      await tx.scene.update({ where: { id: ctaScene.id }, data: { onScreenText: input.cta } });
+    if (input.cta !== undefined && ctaScene) {
+      const speaksCta = plain(ctaScene.voiceoverText) === plain(project.cta);
+      await tx.scene.update({
+        where: { id: ctaScene.id },
+        data: {
+          onScreenText: input.cta,
+          ...(speaksCta ? { voiceoverText: input.cta.replace(/\*/g, "") } : {}),
+        },
+      });
+    }
     for (const [variantId, caption] of Object.entries(input.variantCaptions ?? {})) {
-      await tx.contentVariant.updateMany({
-        where: { id: variantId, projectId: project.id },
-        data: { caption },
+      const variant = project.variants.find((v) => v.id === variantId);
+      if (!variant) throw new ValidationError(`Variant ${variantId} does not belong to this content`);
+      await tx.contentVariant.update({
+        where: { id: variant.id },
+        data: {
+          caption,
+          overrides: toJson({
+            ...((variant.overrides ?? {}) as Record<string, unknown>),
+            captionLocked: true,
+          }) as Prisma.InputJsonValue,
+        },
       });
     }
     const nextRevision = project.revision + 1;
-    const next = onScreenChanged ? "RENDERING" : "QA";
+    const next = onScreenChanged ? "GENERATING_ASSETS" : "QA";
     await transitionContent(tx, {
       projectId: project.id,
       from: "WAITING_APPROVAL",
@@ -327,9 +384,10 @@ export async function editContentText(
       },
     });
     await enqueueJob(tx, {
-      type: next === "RENDERING" ? "pipeline.render" : "pipeline.qa",
+      type: next === "GENERATING_ASSETS" ? "pipeline.assets" : "pipeline.qa",
       payload: { projectId: project.id, revision: nextRevision },
       idempotencyKey: idempotencyKey("edit", { projectId: project.id, revision: nextRevision }),
+      runAt: input.now ?? new Date(),
       workspaceId: project.workspaceId,
       brandId: project.brandId,
       projectId: project.id,

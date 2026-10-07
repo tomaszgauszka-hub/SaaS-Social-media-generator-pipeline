@@ -23,6 +23,8 @@ import type {
   ScriptOutput,
 } from "../prompts/schemas.ts";
 
+const FREE_WORD = /(?<![\p{L}\p{N}-])free(?![\p{L}\p{N}-])/iu;
+
 /**
  * Deterministic "LLM" used in MOCK_AI mode. Produces realistic, schema-valid output from the same context the
  * real prompt is rendered from, using ONLY the product facts — so mock content still passes the real QA rules.
@@ -226,7 +228,9 @@ export function mockScript(ctx: ScriptContext): ScriptOutput {
   const bulletsList = facts.slice(0, 3).map((f) => truncate(shortFact(f.claim, 8), 80));
   const pain = ctx.research.audiencePainPoints[0] ?? `Most ${cat}s cut corners`;
   const benefit = ctx.research.keyBenefits[0]?.benefit ?? shortFact(facts[0]!.claim);
-  const cta = ctx.brand.ctaStyles[0] ?? "Link in bio";
+  // like a careful copywriter: never promise "free" unless a fact supports it
+  const freeOk = facts.some((f) => FREE_WORD.test(f.claim));
+  const cta = ctx.brand.ctaStyles.find((c) => freeOk || !FREE_WORD.test(c)) ?? "Link in bio";
   const script: ScriptOutput["script"] = [
     { sceneKind: "HOOK", durationSec: 2.6, onScreenText: hook.text, voiceover: `${stripMarks(hook.text)}.` },
     { sceneKind: "PROBLEM", durationSec: 3.6, onScreenText: truncate(pain, 70), voiceover: `${pain}.` },
