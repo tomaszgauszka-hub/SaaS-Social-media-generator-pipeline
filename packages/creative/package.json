@@ -1,0 +1,30 @@
+{
+  "name": "@cre/creative",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Creative Engine V2: renderer-independent storyboard model, creative director, typography, text fitting, safe zones, subtitles, creative quality",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts",
+    "./benchmark": "./src/benchmark/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@fontsource/barlow-condensed": "5.3.0",
+    "@fontsource/inter": "5.3.0",
+    "@fontsource/jost": "5.3.0",
+    "@fontsource/manrope": "5.3.0",
+    "@fontsource/nunito": "5.3.0",
+    "@fontsource/playfair-display": "5.3.0",
+    "@fontsource/saira-condensed": "5.3.0",
+    "@fontsource/space-grotesk": "5.3.0",
+    "fontkit": "2.0.4",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/fontkit": "^2.0.9"
+  }
+}

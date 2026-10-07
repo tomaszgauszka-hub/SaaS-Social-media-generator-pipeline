@@ -28,3 +28,6 @@ tmp/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# visual review stills (local)
+.review/
