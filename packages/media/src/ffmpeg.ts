@@ -23,7 +23,7 @@ let config: FfmpegConfig = {
 
 function detectFontsDir(): string | undefined {
   for (const dir of ["/usr/share/fonts/opentype/inter", "/usr/share/fonts/truetype/inter"]) {
-    if (fs.existsSync(dir)) return dir;
+    if (fs.existsSync(/*turbopackIgnore: true*/ dir)) return dir;
   }
   return undefined;
 }

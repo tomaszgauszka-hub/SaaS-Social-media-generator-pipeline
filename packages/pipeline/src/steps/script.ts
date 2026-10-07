@@ -256,7 +256,8 @@ export async function scriptHandler(exec: JobExecution) {
     });
     await enqueue(ctx, tx, {
       type: "pipeline.plan_assets",
-      payload: { projectId: project.id },
+      // hook/caption-only regenerations keep the production tier: no new spending the owner did not ask for
+      payload: { projectId: project.id, keepTier: scope === "HOOK" || scope === "CAPTION" },
       idempotencyKey: idempotencyKey("plan", { projectId: project.id, revision: project.revision }),
       workspaceId: project.workspaceId,
       brandId: project.brandId,

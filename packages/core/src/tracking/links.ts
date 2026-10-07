@@ -24,10 +24,14 @@ export interface RedirectTarget {
   utmTerm: string | null;
 }
 
-/** Final redirect URL: destination + our click id as sub-id (attribution) + optional UTMs (own sites only). */
+/**
+ * Final redirect URL: destination + our click id as sub-id (attribution) + optional UTMs (own sites only).
+ * A parameter already present in the destination is never overwritten — it may be the affiliate id that pays us.
+ */
 export function buildRedirectUrl(link: RedirectTarget, clickId: string): string {
   const url = new URL(link.destinationUrl);
-  if (link.subIdParam) url.searchParams.set(link.subIdParam, clickId);
+  if (link.subIdParam && !url.searchParams.get(link.subIdParam))
+    url.searchParams.set(link.subIdParam, clickId);
   if (link.appendUtm) {
     const utm: [string, string | null][] = [
       ["utm_source", link.utmSource],
@@ -52,6 +56,7 @@ export function publicLinkUrl(
   if (link.redirect) return trackingUrl(appUrl, link.code);
   if (!link.subIdParam) return link.destinationUrl;
   const url = new URL(link.destinationUrl);
+  if (url.searchParams.get(link.subIdParam)) return link.destinationUrl; // never overwrite the affiliate's own params
   url.searchParams.set(link.subIdParam, link.code);
   return url.toString();
 }

@@ -1,3 +1,7 @@
-export default function Home() {
-  return <main>Content Revenue Engine</main>;
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
+
+export default async function Home() {
+  const user = await getCurrentUser();
+  redirect(user ? "/dashboard" : "/login");
 }

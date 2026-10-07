@@ -235,6 +235,17 @@ export async function planAssetsHandler(exec: JobExecution) {
     },
   });
   if (project.status !== "ASSET_PLANNING") return { skipped: true, status: project.status };
+  if (exec.payload.keepTier === true && project.tier) {
+    await transitionContent(ctx.prisma, {
+      projectId: project.id,
+      from: "ASSET_PLANNING",
+      to: "GENERATING_ASSETS",
+      actor: "WORKER",
+      reason: `tier ${project.tier} kept (scoped regeneration)`,
+    });
+    const kept = await ensureAssets(ctx, project.id, exec.job.runId);
+    return { tier: project.tier, kept: true, ...kept };
+  }
   const now = ctx.clock.now();
   const media = ctx.media;
 

@@ -11,10 +11,12 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@cre/ai": "workspace:*",
     "@cre/analytics": "workspace:*",
     "@cre/config": "workspace:*",
     "@cre/core": "workspace:*",
     "@cre/db": "workspace:*",
+    "@cre/providers": "workspace:*",
     "@cre/publishing": "workspace:*",
     "@cre/shared": "workspace:*",
     "next": "16.4.0",

@@ -15,3 +15,5 @@ export * from "./revenue/conversions.ts";
 export * from "./credentials/store.ts";
 export * from "./pipeline/commands.ts";
 export * from "./reporting/kpis.ts";
+export * from "./reporting/profitability.ts";
+export * from "./products/catalog.ts";

@@ -3,7 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setEnvForTesting } from "@cre/config";
-import { approveContent, enqueueJob, kpiSummary, requestIdeation } from "@cre/core";
+import {
+  approveContent,
+  editContentText,
+  enqueueJob,
+  kpiSummary,
+  requestIdeation,
+  requestRegeneration,
+} from "@cre/core";
 import { createPrismaClient, decimalFieldToMicros, seedDatabase, type PrismaClient } from "@cre/db";
 import { testDatabaseUrl, truncateAll } from "@cre/db/testing";
 import { MockSocialPublisher, type SocialPublisher } from "@cre/publishing";
@@ -294,6 +301,53 @@ describe("safety rails", () => {
     await budgetDispatcher.runUntilIdle({ advanceUpToMs: 15 * 60_000 });
     expect((await prisma.generationJob.findUniqueOrThrow({ where: { id: jobId } })).status).toBe("SUCCEEDED");
     expect(llmCalls).toBeGreaterThan(0);
+  });
+
+  it("hook-only regeneration reuses every asset and keeps the tier; owner caption edits survive re-renders", async () => {
+    const project = await prisma.contentProject.findFirstOrThrow({
+      where: { brandId: brands["demo-beauty"]!, status: "WAITING_APPROVAL" },
+      include: { variants: true },
+    });
+    const imagesBefore = await prisma.generationUsage.count({
+      where: { projectId: project.id, operation: "IMAGE_GENERATION" },
+    });
+    await requestRegeneration(prisma, {
+      projectId: project.id,
+      userId: ownerId,
+      scope: "HOOK",
+      note: "more specific",
+      now: clock.now(),
+    });
+    await dispatcher.runUntilIdle({ advanceUpToMs: 15 * 60_000 });
+    const after = await prisma.contentProject.findUniqueOrThrow({ where: { id: project.id } });
+    expect(after.status).toBe("WAITING_APPROVAL");
+    expect(after.revision).toBe(project.revision + 1);
+    expect(after.tier).toBe(project.tier);
+    expect(after.hook).not.toBe(project.hook);
+    expect(
+      await prisma.generationUsage.count({ where: { projectId: project.id, operation: "IMAGE_GENERATION" } }),
+    ).toBe(imagesBefore);
+    expect(after.masterAssetId).not.toBe(project.masterAssetId); // re-rendered with the new hook
+
+    // owner edits the on-screen hook and one caption → re-render keeps the edited caption
+    const variant = project.variants.find((v) => v.platform === "INSTAGRAM")!;
+    const caption =
+      "#ad · affiliate link\n\nOwner-written caption that stays exactly like this. Link in bio.";
+    await editContentText(prisma, {
+      projectId: project.id,
+      userId: ownerId,
+      hook: "Owner *edited* hook",
+      variantCaptions: { [variant.id]: caption },
+      now: clock.now(),
+    });
+    await dispatcher.runUntilIdle({ advanceUpToMs: 15 * 60_000 });
+    const edited = await prisma.contentProject.findUniqueOrThrow({
+      where: { id: project.id },
+      include: { variants: true },
+    });
+    expect(edited.status).toBe("WAITING_APPROVAL");
+    expect(JSON.stringify(edited.renderSpec)).toContain("Owner *edited* hook");
+    expect(edited.variants.find((v) => v.id === variant.id)?.caption).toBe(caption);
   });
 
   it("QA auto-rejects non-compliant content, tries one automatic fix, then leaves it for the owner", async () => {

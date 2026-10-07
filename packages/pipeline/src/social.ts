@@ -1,7 +1,8 @@
-import { parseOAuthSecret, readCredentialSecret } from "@cre/core";
+import { parseOAuthSecret, readCredentialSecret, saveCredential } from "@cre/core";
 import type { SocialAccount } from "@cre/db";
 import {
   isSocialPlatform,
+  tiktokRefresh,
   type SocialAccountRef,
   type SocialCredentials,
   type SocialPublisher,
@@ -58,8 +59,42 @@ export async function loadSocialCredentials(
     account.credentialId,
     ctx.env.CREDENTIALS_ENCRYPTION_KEY,
   );
-  const token = parseOAuthSecret(secret);
-  if (credential.expiresAt && credential.expiresAt.getTime() < ctx.clock.now().getTime()) {
+  let token = parseOAuthSecret(secret);
+  let expiresAt = credential.expiresAt;
+  const soon = ctx.clock.now().getTime() + 10 * 60_000;
+  // TikTok access tokens live ~24 h: refresh with the stored refresh token before they lapse
+  if (
+    account.platform === "TIKTOK" &&
+    expiresAt &&
+    expiresAt.getTime() < soon &&
+    token.refreshToken &&
+    ctx.env.TIKTOK_CLIENT_KEY &&
+    ctx.env.TIKTOK_CLIENT_SECRET
+  ) {
+    const fresh = await tiktokRefresh({
+      clientKey: ctx.env.TIKTOK_CLIENT_KEY,
+      clientSecret: ctx.env.TIKTOK_CLIENT_SECRET,
+      refreshToken: token.refreshToken,
+    });
+    token = {
+      accessToken: fresh.accessToken,
+      refreshToken: fresh.refreshToken,
+      refreshExpiresAt: fresh.refreshExpiresAt.toISOString(),
+    };
+    expiresAt = fresh.expiresAt;
+    await saveCredential(ctx.prisma, {
+      id: credential.id,
+      workspaceId: credential.workspaceId,
+      provider: credential.provider,
+      kind: credential.kind,
+      label: credential.label,
+      secret: token,
+      scopes: fresh.scope.split(","),
+      expiresAt,
+      keyB64: ctx.env.CREDENTIALS_ENCRYPTION_KEY,
+    });
+  }
+  if (expiresAt && expiresAt.getTime() < ctx.clock.now().getTime()) {
     throw new FatalError(`Access token for ${account.handle} expired — reconnect the account`, {
       code: "TOKEN_EXPIRED",
     });
@@ -67,6 +102,6 @@ export async function loadSocialCredentials(
   return {
     accessToken: token.accessToken,
     ...(token.pageAccessToken ? { pageAccessToken: token.pageAccessToken } : {}),
-    expiresAt: credential.expiresAt,
+    expiresAt,
   };
 }

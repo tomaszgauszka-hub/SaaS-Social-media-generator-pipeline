@@ -26,6 +26,8 @@ export const EnvSchema = z.object({
 
   CREDENTIALS_ENCRYPTION_KEY: z.string().optional(),
   TRACKING_HASH_SECRET: z.string().optional(),
+  /** FX rates to USD for webhook conversions, e.g. "EUR=1.08,GBP=1.27" */
+  FX_RATES_USD: z.string().optional(),
   SEED_OWNER_EMAIL: z.email().default("owner@example.com"),
   SEED_OWNER_PASSWORD: z.string().min(8).default("change-me-now"),
 
@@ -85,21 +87,21 @@ let rootDirCache: string | undefined;
 /** Monorepo root = nearest ancestor containing pnpm-workspace.yaml (falls back to cwd). */
 export function findRepoRoot(start = process.cwd()): string {
   if (rootDirCache) return rootDirCache;
-  let dir = path.resolve(start);
+  let dir = path.resolve(/*turbopackIgnore: true*/ start);
   for (;;) {
-    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml"))) {
+    if (fs.existsSync(/*turbopackIgnore: true*/ path.join(dir, "pnpm-workspace.yaml"))) {
       rootDirCache = dir;
       return dir;
     }
     const parent = path.dirname(dir);
-    if (parent === dir) return path.resolve(start);
+    if (parent === dir) return path.resolve(/*turbopackIgnore: true*/ start);
     dir = parent;
   }
 }
 
 /** Resolve a possibly-relative path against the repo root (not the process cwd). */
 export function resolveFromRoot(p: string): string {
-  return path.isAbsolute(p) ? p : path.join(findRepoRoot(), p);
+  return path.isAbsolute(p) ? p : path.join(/*turbopackIgnore: true*/ findRepoRoot(), p);
 }
 
 /**
@@ -107,8 +109,8 @@ export function resolveFromRoot(p: string): string {
  * Safe to call multiple times.
  */
 export function loadRootEnvFile(): void {
-  const file = process.env.ENV_FILE ?? path.join(findRepoRoot(), ".env");
-  if (fs.existsSync(file)) {
+  const file = process.env.ENV_FILE ?? path.join(/*turbopackIgnore: true*/ findRepoRoot(), ".env");
+  if (fs.existsSync(/*turbopackIgnore: true*/ file)) {
     try {
       process.loadEnvFile(file);
     } catch {
@@ -117,7 +119,9 @@ export function loadRootEnvFile(): void {
   }
 }
 
-function blankToUndefined(source: NodeJS.ProcessEnv): Record<string, string | undefined> {
+function blankToUndefined(
+  source: Readonly<Record<string, string | undefined>>,
+): Record<string, string | undefined> {
   const out: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(source)) out[k] = v === undefined || v.trim() === "" ? undefined : v;
   return out;
@@ -145,6 +149,17 @@ export function setEnvForTesting(overrides: Partial<Record<keyof Env, string>>):
   loadRootEnvFile();
   cached = parseEnv({ ...process.env, ...overrides });
   return cached;
+}
+
+/** Parse FX_RATES_USD ("EUR=1.08,GBP=1.27") into { EUR: 1.08, GBP: 1.27 }. */
+export function parseFxRates(value: string | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const part of (value ?? "").split(/[\s,;]+/)) {
+    const [code, rate] = part.split("=");
+    const n = Number(rate);
+    if (code && /^[A-Za-z]{3}$/.test(code) && Number.isFinite(n) && n > 0) out[code.toUpperCase()] = n;
+  }
+  return out;
 }
 
 export function resetEnvCache(): void {

@@ -59,6 +59,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@cre/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@cre/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
@@ -71,6 +74,9 @@ importers:
       '@cre/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@cre/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
       '@cre/publishing':
         specifier: workspace:*
         version: link:../../packages/publishing

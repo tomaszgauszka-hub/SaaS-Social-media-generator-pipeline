@@ -36,6 +36,24 @@ describe("redirect URLs", () => {
     expect(url.searchParams.has("utm_source")).toBe(false); // affiliate URLs stay untouched
   });
 
+  it("never overwrites a parameter the destination already carries (it may be the affiliate id)", () => {
+    const url = new URL(
+      buildRedirectUrl(
+        { ...link, destinationUrl: "https://shop.test/p?ref=partner-7", subIdParam: "ref" },
+        "CLICK9",
+      ),
+    );
+    expect(url.searchParams.get("ref")).toBe("partner-7");
+    expect(
+      publicLinkUrl("https://app.test", {
+        code: "Zz9",
+        redirect: false,
+        destinationUrl: "https://x.test/p?sid=aff-1",
+        subIdParam: "sid",
+      }),
+    ).toBe("https://x.test/p?sid=aff-1");
+  });
+
   it("appends UTMs only when enabled (own sites)", () => {
     const url = new URL(buildRedirectUrl({ ...link, appendUtm: true }, "C"));
     expect(url.searchParams.get("utm_source")).toBe("tiktok");

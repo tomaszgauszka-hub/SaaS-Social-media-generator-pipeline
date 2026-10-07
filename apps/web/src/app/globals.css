@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-zinc-50 text-zinc-900 antialiased;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-600;
+  }
+}
+
+/* Custom utilities (Tailwind v4: only @utility classes can be @apply-ed) */
+@utility card {
+  @apply rounded-xl border border-zinc-200 bg-white shadow-sm;
+}
+@utility btn {
+  @apply inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-brand-600 text-white hover:bg-brand-700;
+}
+@utility btn-success {
+  @apply btn bg-emerald-600 text-white hover:bg-emerald-700;
+}
+@utility btn-danger {
+  @apply btn bg-rose-600 text-white hover:bg-rose-700;
+}
+@utility btn-secondary {
+  @apply btn border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100;
+}
+@utility btn-ghost {
+  @apply btn text-zinc-700 hover:bg-zinc-100;
+}
+@utility input {
+  @apply block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-zinc-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 focus:outline-none;
+}
+@utility label {
+  @apply mb-1 block text-xs font-semibold tracking-wide text-zinc-500 uppercase;
+}
+@utility th {
+  @apply px-3 py-2 text-left text-xs font-semibold tracking-wide text-zinc-500 uppercase;
+}
+@utility td {
+  @apply px-3 py-2 align-top text-sm;
+}

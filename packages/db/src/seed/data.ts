@@ -118,7 +118,7 @@ export const PROGRAMS: SeedProgram[] = [
     defaultCommissionRate: "0.0600",
     cookieDays: 7,
     redirectPolicy: "DIRECT_LINK_ONLY",
-    subIdParam: "sid",
+    subIdParam: "subid",
     disclosureText: "#ad",
     termsNotes:
       "Demo of a program whose terms forbid redirect/cloaked links: content uses the raw affiliate URL; clicks are attributed via the network's sub-id reports.",
@@ -130,7 +130,7 @@ export const PROGRAMS: SeedProgram[] = [
     defaultCommissionRate: "0.0000",
     cookieDays: 30,
     redirectPolicy: "REDIRECT_ALLOWED",
-    subIdParam: "ref",
+    subIdParam: "sub_id",
     disclosureText: "#ad · we may earn a referral fee",
     termsNotes: "Pays a fixed fee per qualified lead.",
   },
