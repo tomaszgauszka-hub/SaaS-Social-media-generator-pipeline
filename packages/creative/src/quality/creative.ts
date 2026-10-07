@@ -330,8 +330,19 @@ export function creativeQa(input: CreativeQaInput): CreativeQaReport {
     safe.slice(0, 3).forEach((i) => notes.push(i.message));
     for (const b of beats) {
       if (b.background !== "media") continue;
+      const cards = b.overlays
+        .filter((o) => o.kind === "panel")
+        .map((o) => (o.kind === "panel" ? o.box : null)!);
+      const onCard = (t: (typeof b.texts)[number]) =>
+        cards.some(
+          (r) =>
+            t.box.x >= r.x - 1 &&
+            t.box.y >= r.y - 1 &&
+            t.box.x + t.box.w <= r.x + r.w + 1 &&
+            t.box.y + t.box.h <= r.y + r.h + 1,
+        );
       for (const t of b.texts)
-        if (t.surface === "none") {
+        if (t.surface === "none" && !onCard(t)) {
           s -= 15;
           notes.push(`${t.slot} sits on imagery without a scrim`);
         }

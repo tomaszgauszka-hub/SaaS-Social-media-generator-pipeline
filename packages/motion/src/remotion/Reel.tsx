@@ -225,7 +225,7 @@ export const BeatView: React.FC<{ plan: RenderPlan; beat: ResolvedBeat; ms: numb
           moving
             ? {
                 transform: `translate(${cx.toFixed(2)}px, ${cy.toFixed(2)}px) scale(${z.toFixed(5)})`,
-                transformOrigin: "50% 50%",
+                transformOrigin: cam.origin ? `${cam.origin.x}px ${cam.origin.y}px` : "50% 50%",
               }
             : undefined
         }

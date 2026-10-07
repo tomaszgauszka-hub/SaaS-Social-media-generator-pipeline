@@ -565,6 +565,8 @@ export const VisualBeat = z.object({
       zoom: z.tuple([z.number().positive(), z.number().positive()]).default([1, 1]),
       x: z.tuple([z.number(), z.number()]).default([0, 0]),
       y: z.tuple([z.number(), z.number()]).default([0, 0]),
+      /** zoom origin (px); defaults to the frame centre */
+      origin: Point.optional(),
     })
     .default({ zoom: [1, 1], x: [0, 0], y: [0, 0] }),
   /** director's reasoning — kept for debugging and QA explanations */

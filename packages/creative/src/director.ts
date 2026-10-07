@@ -1336,7 +1336,7 @@ function build(step: RecipeStep, c: Ctx, id: string, index: number, prev: Draft 
 }
 
 /** camera move per layout: the world drifts slowly so no shot reads as a still (UI layers stay put) */
-function cameraFor(d: Draft, energy: number): VisualBeat["camera"] {
+function cameraFor(d: Draft, energy: number, side: 1 | -1): VisualBeat["camera"] {
   switch (d.layout) {
     case "callout_left":
     case "callout_right":
@@ -1348,8 +1348,20 @@ function cameraFor(d: Draft, energy: number): VisualBeat["camera"] {
       return { zoom: [1, 1.07 - energy * 0.02], x: [0, 0], y: [0, -18] };
     case "macro_focus":
       return { zoom: [1, 1.04], x: [0, 0], y: [0, 0] };
+    case "hero_center":
+    case "hero_low": {
+      // a lone product on a set is where a reel most easily stalls: push in around the product itself (so it
+      // never grows into the headline above or the tagline below) and travel sideways
+      const main = d.media.find((m) => m.slot === "primary");
+      const origin =
+        main && main.crop !== "cover"
+          ? { x: main.box.x + main.box.w / 2, y: main.box.y + main.box.h / 2 }
+          : undefined;
+      return { zoom: [1, 1.1], x: [0, side * 64], y: [0, 0], ...(origin ? { origin } : {}) };
+    }
     default:
-      return { zoom: [1, 1.07 - energy * 0.02], x: [0, 0], y: [0, -10] };
+      // product on a set: a clear push-in with a lateral drift — a product that only floats reads as a still
+      return { zoom: [1, 1.12 - energy * 0.03], x: [0, side * 28], y: [0, -12] };
   }
 }
 
@@ -1487,7 +1499,7 @@ export function directCreative(brief: CreativeBrief, opts: DirectorOptions = {})
                 : dir.transitionMs,
       },
       background: draft.background ?? "kit",
-      camera: draft.camera ?? cameraFor(draft, kit.tokens.motion.energy),
+      camera: draft.camera ?? cameraFor(draft, kit.tokens.motion.energy, i % 2 ? 1 : -1),
       note: draft.note,
     };
     t += beat.durationMs;
