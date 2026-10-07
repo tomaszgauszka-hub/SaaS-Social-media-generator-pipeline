@@ -19,7 +19,7 @@ import {
 import { assetLocalPath } from "../assets.ts";
 import type { PipelineContext } from "../context.ts";
 import { payloadString, type JobExecution } from "../job-types.ts";
-import { accountRef, loadSocialCredentials, publisherFor } from "../social.ts";
+import { accountRef, flagReauthIfNeeded, loadSocialCredentials, publisherFor } from "../social.ts";
 import { enqueue } from "../outbox.ts";
 
 const POLL_INTERVAL_MINUTES = 1;
@@ -179,6 +179,7 @@ export async function publishHandler(exec: JobExecution) {
   try {
     return await publishOrPoll(exec, pub, mode, ids, now);
   } catch (err) {
+    await flagReauthIfNeeded(ctx, pub.socialAccount, err);
     // pre-flight problems (kill switch, expired token, invalid post) leave the publication SCHEDULED with the reason
     await ctx.prisma.publication.updateMany({
       where: { id: pub.id, status: "SCHEDULED" },
@@ -393,9 +394,10 @@ async function recordPublishFailure(
   err: unknown,
 ): Promise<void> {
   const final = classifyError(err) !== "retryable" || exec.attempt >= exec.job.maxAttempts;
+  // specific provider codes (AUTH_EXPIRED, RATE_LIMITED …) are more useful than the bare HTTP status
   const code =
     err instanceof ProviderError
-      ? err.status
+      ? err.code === "PROVIDER_ERROR" && err.status
         ? `HTTP_${err.status}`
         : err.code
       : ((err as { code?: string }).code ?? "ERROR");

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,15 +11,16 @@ import {
   kpiSummary,
   requestIdeation,
   requestRegeneration,
+  saveCredential,
 } from "@cre/core";
 import { createPrismaClient, decimalFieldToMicros, seedDatabase, type PrismaClient } from "@cre/db";
 import { testDatabaseUrl, truncateAll } from "@cre/db/testing";
 import { MockSocialPublisher, type SocialPublisher } from "@cre/publishing";
-import { addDays, createLogger, FatalError, idempotencyKey } from "@cre/shared";
+import { addDays, createLogger, FatalError, idempotencyKey, ProviderError } from "@cre/shared";
 import { createPipelineContext, ManualClock, type PipelineContext } from "./context.ts";
 import { InlineDispatcher } from "./dispatch/inline.ts";
 import { runJob } from "./runner.ts";
-import { publisherFor } from "./social.ts";
+import { loadSocialCredentials, publisherFor } from "./social.ts";
 import { concludeExperiments } from "./steps/experiments.ts";
 import { resumeBudgetBlocked } from "./steps/maintenance.ts";
 
@@ -261,6 +263,73 @@ describe("safety rails", () => {
     expect(pubs.every((p) => p.status === "SCHEDULED" && p.errorCode === "PUBLISHING_DISABLED")).toBe(true);
     const jobs = await prisma.generationJob.findMany({ where: { projectId, type: "publish.publication" } });
     expect(jobs.every((j) => j.status === "FAILED")).toBe(true);
+  });
+
+  it("a rejected token flags the account for reconnecting and is never retried", async () => {
+    const brandId = brands["demo-saas"]!;
+    const keyB64 = randomBytes(32).toString("base64");
+    const credential = await saveCredential(prisma, {
+      workspaceId,
+      provider: "meta",
+      kind: "OAUTH_TOKEN",
+      label: "expired test token",
+      secret: { accessToken: "EXPIRED-TOKEN" },
+      keyB64,
+    });
+    await prisma.socialAccount.updateMany({
+      where: { brandId },
+      data: { isMock: false, status: "CONNECTED", credentialId: credential.id },
+    });
+    let calls = 0;
+    const mock = new MockSocialPublisher();
+    const rejecting: SocialPublisher = {
+      name: "fake-real",
+      isMock: false,
+      platforms: mock.platforms,
+      healthCheck: () => mock.healthCheck(),
+      validate: () => [],
+      publish: () => {
+        calls++;
+        return Promise.reject(
+          new ProviderError("meta", "Error validating access token: Session has expired (190)", {
+            status: 400,
+            retryable: false,
+            code: "AUTH_EXPIRED",
+          }),
+        );
+      },
+      getStatus: (ref) => mock.getStatus(ref),
+      getAnalytics: (id, c) => mock.getAnalytics(id, c),
+    };
+    const authCtx: PipelineContext = {
+      ...ctx,
+      env: {
+        ...ctx.env,
+        PUBLISHING_ENABLED: true,
+        CREDENTIALS_ENCRYPTION_KEY: keyB64,
+        APP_URL: "https://app.example.com",
+      },
+      publishers: { INSTAGRAM: rejecting, FACEBOOK: rejecting, TIKTOK: rejecting },
+    };
+
+    const projectId = await produce("demo-saas");
+    await approveContent(prisma, { projectId, userId: ownerId, now: clock.now() });
+    await new InlineDispatcher(authCtx).runUntil(addDays(clock.now(), 2));
+    const pubs = await prisma.publication.findMany({
+      where: { variant: { projectId } },
+      include: { socialAccount: true },
+    });
+    expect(pubs.length).toBeGreaterThan(0);
+    expect(pubs.map((p) => [p.status, p.errorCode, p.socialAccount.status])).toEqual(
+      pubs.map(() => ["FAILED", "AUTH_EXPIRED", "NEEDS_REAUTH"]),
+    );
+    expect(calls).toBe(pubs.length); // one attempt each — auth errors are not retried
+
+    // until the owner reconnects, the flagged account fails fast without calling the platform
+    await expect(loadSocialCredentials(authCtx, pubs[0]!.socialAccount, rejecting)).rejects.toMatchObject({
+      code: "NEEDS_REAUTH",
+    });
+    expect(calls).toBe(pubs.length);
   });
 
   it("blocks paid work when a budget would be exceeded — before the provider is called — and resumes later", async () => {

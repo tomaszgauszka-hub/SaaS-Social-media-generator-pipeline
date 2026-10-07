@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { type Readable } from "node:stream";
@@ -95,9 +95,14 @@ export class S3StorageProvider implements StorageProvider {
     }
     await fs.promises.mkdir(path.dirname(local), { recursive: true });
     const obj = await this.client.send(new GetObjectCommand({ Bucket: this.opts.bucket, Key: key }));
-    const tmp = `${local}.${process.pid}.tmp`;
-    await pipeline(obj.Body as Readable, fs.createWriteStream(tmp));
-    await fs.promises.rename(tmp, local);
+    const tmp = `${local}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await pipeline(obj.Body as Readable, fs.createWriteStream(tmp));
+      await fs.promises.rename(tmp, local);
+    } catch (err) {
+      await fs.promises.rm(tmp, { force: true });
+      throw err;
+    }
     return local;
   }
 

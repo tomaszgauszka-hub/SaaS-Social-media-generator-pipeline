@@ -78,12 +78,13 @@ export class FalClient {
         { method: "GET", headers: this.headers() },
         { timeoutMs: 30_000, ...(ctx.signal ? { signal: ctx.signal } : {}) },
       );
-      if (status.status === "COMPLETED") break;
+      // a failed request can be reported as COMPLETED + error, so the error check comes first
       if (status.error)
         throw new ProviderError("fal", `request failed: ${status.error}`, {
           retryable: false,
           charged: true,
         });
+      if (status.status === "COMPLETED") break;
       if (Date.now() > deadline) {
         throw new ProviderError("fal", `request did not complete within ${timeoutMs} ms`, {
           retryable: true,

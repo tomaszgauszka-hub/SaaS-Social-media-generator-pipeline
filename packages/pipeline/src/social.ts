@@ -7,7 +7,7 @@ import {
   type SocialCredentials,
   type SocialPublisher,
 } from "@cre/publishing";
-import { FatalError } from "@cre/shared";
+import { AppError, FatalError } from "@cre/shared";
 import type { PipelineContext } from "./context.ts";
 
 /**
@@ -50,6 +50,11 @@ export async function loadSocialCredentials(
   publisher: SocialPublisher,
 ): Promise<SocialCredentials | null> {
   if (publisher.isMock) return null;
+  if (account.status === "NEEDS_REAUTH")
+    throw new FatalError(
+      `${account.platform} account ${account.handle} was rejected by the platform — reconnect it under Brands`,
+      { code: "NEEDS_REAUTH" },
+    );
   if (!account.credentialId)
     throw new FatalError(
       `${account.platform} account ${account.handle} is not connected (no OAuth credential)`,
@@ -104,4 +109,33 @@ export async function loadSocialCredentials(
     ...(token.pageAccessToken ? { pageAccessToken: token.pageAccessToken } : {}),
     expiresAt,
   };
+}
+
+/** Error codes meaning the stored OAuth grant no longer works — retries cannot fix them, a reconnect can. */
+const REAUTH_CODES = new Set(["AUTH_EXPIRED", "TOKEN_EXPIRED", "PERMISSION_DENIED"]);
+
+export function needsReauth(err: unknown): boolean {
+  return err instanceof AppError && REAUTH_CODES.has(err.code);
+}
+
+/**
+ * Flag a real account whose token was rejected so the dashboard asks for a reconnect (the OAuth callback sets it
+ * back to CONNECTED). Mock accounts are never touched.
+ */
+export async function flagReauthIfNeeded(
+  ctx: PipelineContext,
+  account: Pick<SocialAccount, "id" | "isMock" | "handle" | "platform">,
+  err: unknown,
+): Promise<boolean> {
+  if (account.isMock || !needsReauth(err)) return false;
+  const { count } = await ctx.prisma.socialAccount.updateMany({
+    where: { id: account.id, status: "CONNECTED" },
+    data: { status: "NEEDS_REAUTH" },
+  });
+  if (count > 0)
+    ctx.logger.warn(
+      { socialAccountId: account.id, platform: account.platform, code: (err as AppError).code },
+      "social account needs to be reconnected",
+    );
+  return count > 0;
 }

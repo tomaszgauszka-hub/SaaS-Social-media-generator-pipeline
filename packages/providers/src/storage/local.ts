@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { Readable } from "node:stream";
@@ -24,18 +24,23 @@ export class LocalStorageProvider implements StorageProvider {
     const dest = this.resolve(key);
     await fs.promises.mkdir(path.dirname(dest), { recursive: true });
     const hash = createHash("sha256");
-    const tmp = `${dest}.${process.pid}.tmp`;
-    await pipeline(
-      fs.createReadStream(localPath),
-      async function* (source: AsyncIterable<Buffer>) {
-        for await (const chunk of source) {
-          hash.update(chunk);
-          yield chunk;
-        }
-      },
-      fs.createWriteStream(tmp),
-    );
-    await fs.promises.rename(tmp, dest);
+    const tmp = `${dest}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await pipeline(
+        fs.createReadStream(localPath),
+        async function* (source: AsyncIterable<Buffer>) {
+          for await (const chunk of source) {
+            hash.update(chunk);
+            yield chunk;
+          }
+        },
+        fs.createWriteStream(tmp),
+      );
+      await fs.promises.rename(tmp, dest);
+    } catch (err) {
+      await fs.promises.rm(tmp, { force: true });
+      throw err;
+    }
     const st = await fs.promises.stat(dest);
     return { key, sizeBytes: st.size, checksum: hash.digest("hex"), contentType };
   }

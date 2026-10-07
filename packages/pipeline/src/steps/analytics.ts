@@ -7,7 +7,7 @@ import { addDays, addHours, idempotencyKey, randomCode, seededRandom, toJson } f
 import type { PipelineContext } from "../context.ts";
 import { payloadString, type JobExecution } from "../job-types.ts";
 import { economicOutcomeFor } from "../prompt-context.ts";
-import { accountRef, loadSocialCredentials, publisherFor } from "../social.ts";
+import { accountRef, flagReauthIfNeeded, loadSocialCredentials, publisherFor } from "../social.ts";
 import { armOverrides } from "./experiments.ts";
 import { enqueue } from "../outbox.ts";
 
@@ -141,20 +141,26 @@ export async function analyticsCollectHandler(exec: JobExecution) {
   const now = ctx.clock.now();
   const project = pub.variant.project;
   const publisher = pub.isMock ? ctx.mockPublisher : publisherFor(ctx, pub.socialAccount);
-  const credentials = await loadSocialCredentials(ctx, pub.socialAccount, publisher);
-  const metrics = await publisher.getAnalytics(pub.externalPostId, {
-    account: accountRef(pub.socialAccount),
-    credentials,
-    publishedAt: pub.publishedAt,
-    now,
-    signal: exec.signal,
-    hints: {
-      qaScore: project.qaScore,
-      hookStyle: armOverrides(pub.variant).hookStyle ?? project.hookStyle,
-      durationMs: project.durationMs,
-      seed: pub.id,
-    },
-  });
+  let metrics: PlatformMetrics;
+  try {
+    const credentials = await loadSocialCredentials(ctx, pub.socialAccount, publisher);
+    metrics = await publisher.getAnalytics(pub.externalPostId, {
+      account: accountRef(pub.socialAccount),
+      credentials,
+      publishedAt: pub.publishedAt,
+      now,
+      signal: exec.signal,
+      hints: {
+        qaScore: project.qaScore,
+        hookStyle: armOverrides(pub.variant).hookStyle ?? project.hookStyle,
+        durationMs: project.durationMs,
+        seed: pub.id,
+      },
+    });
+  } catch (err) {
+    await flagReauthIfNeeded(ctx, pub.socialAccount, err);
+    throw err;
+  }
   await ctx.prisma.analyticsSnapshot.create({
     data: {
       publicationId: pub.id,

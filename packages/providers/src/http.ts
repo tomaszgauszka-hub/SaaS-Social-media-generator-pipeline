@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -100,19 +101,27 @@ export async function downloadToFile(
   if (declared > max)
     throw new ProviderError(provider, `download too large (${declared} bytes)`, { retryable: false });
   await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+  // write to a temp file and rename when complete: a failed download never leaves a truncated file at `dest`
+  const tmp = `${dest}.${randomUUID()}.part`;
   let total = 0;
-  await pipeline(
-    Readable.fromWeb(res.body as never),
-    async function* (source: AsyncIterable<Buffer>) {
-      for await (const chunk of source) {
-        total += chunk.length;
-        if (total > max)
-          throw new ProviderError(provider, "download exceeded size limit", { retryable: false });
-        yield chunk;
-      }
-    },
-    fs.createWriteStream(dest),
-  );
+  try {
+    await pipeline(
+      Readable.fromWeb(res.body as never),
+      async function* (source: AsyncIterable<Buffer>) {
+        for await (const chunk of source) {
+          total += chunk.length;
+          if (total > max)
+            throw new ProviderError(provider, "download exceeded size limit", { retryable: false });
+          yield chunk;
+        }
+      },
+      fs.createWriteStream(tmp),
+    );
+    await fs.promises.rename(tmp, dest);
+  } catch (err) {
+    await fs.promises.rm(tmp, { force: true });
+    throw err;
+  }
   return { sizeBytes: total, contentType: res.headers.get("content-type") ?? "application/octet-stream" };
 }
 

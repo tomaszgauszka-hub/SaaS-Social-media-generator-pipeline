@@ -22,7 +22,7 @@ import {
   ScriptOutput,
 } from "./prompts/schemas.ts";
 import { MockLLMProvider } from "./providers/mock.ts";
-import { DeepSeekProvider } from "./providers/openai-compatible.ts";
+import { DeepSeekProvider, OpenAICompatibleProvider } from "./providers/openai-compatible.ts";
 import { runPrompt, sumUsage } from "./registry.ts";
 import { runStructured, StructuredOutputError } from "./structured.ts";
 import { brandFixture, productFixture } from "./test-fixtures.ts";
@@ -350,6 +350,109 @@ describe("DeepSeek adapter (fetch stubbed — no network)", () => {
     expect(health.ok).toBe(true);
     expect(health.message).toContain("4.20 USD");
     expect(fetchMock.mock.calls[0]![0]).toBe("https://api.deepseek.com/user/balance");
+  });
+
+  it("treats network failures and unparseable bodies as retryable (the latter possibly charged)", async () => {
+    const ds = new DeepSeekProvider({
+      apiKey: "sk",
+      baseUrl: "https://api.deepseek.com/",
+      model: "deepseek-chat",
+    });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+    await expect(ds.generateText({ messages: [] })).rejects.toSatisfy(
+      (e: unknown) => e instanceof ProviderError && e.retryable && !e.charged,
+    );
+    const garbage = vi.fn((_url: string) =>
+      Promise.resolve(new Response("<html>gateway</html>", { status: 200 })),
+    );
+    vi.stubGlobal("fetch", garbage);
+    await expect(ds.generateText({ messages: [] })).rejects.toSatisfy(
+      (e: unknown) => e instanceof ProviderError && e.retryable && e.charged,
+    );
+    // trailing slash in DEEPSEEK_BASE_URL is tolerated
+    expect(garbage.mock.calls[0]![0]).toBe("https://api.deepseek.com/chat/completions");
+  });
+
+  it("repairs invalid structured output through the real adapter, in JSON mode on every attempt", async () => {
+    const replies = ['{"title": 42}', '{"title":"Fixed"}'];
+    const bodies: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) => {
+        bodies.push(JSON.parse(init?.body as string) as Record<string, unknown>);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              choices: [{ message: { content: replies[bodies.length - 1] }, finish_reason: "stop" }],
+              usage: { prompt_tokens: 100, completion_tokens: 10 },
+            }),
+            { status: 200 },
+          ),
+        );
+      }),
+    );
+    const ds = new DeepSeekProvider({
+      apiKey: "sk",
+      baseUrl: "https://api.deepseek.com",
+      model: "deepseek-chat",
+    });
+    const res = await ds.generateStructured({
+      messages: [{ role: "user", content: "Return JSON" }],
+      schema: z.object({ title: z.string() }),
+      schemaName: "Title",
+    });
+    expect(res).toMatchObject({ data: { title: "Fixed" }, attempts: 2 });
+    expect(res.calls).toHaveLength(2);
+    expect(bodies.every((b) => (b.response_format as { type: string }).type === "json_object")).toBe(true);
+    const repair = bodies[1]!.messages as { role: string; content: string }[];
+    expect(repair.at(-1)!.content).toMatch(/does not match the Title schema/);
+  });
+
+  it("prices cache hits at the discounted rate", () => {
+    const ds = new DeepSeekProvider({
+      apiKey: "sk",
+      baseUrl: "https://api.deepseek.com",
+      model: "deepseek-chat",
+    });
+    // 200 miss × 0.28 + 1000 hit × 0.028 + 300 out × 0.42 (USD / 1M tokens)
+    expect(
+      ds.costForUsage("deepseek-chat", { inputTokens: 1200, outputTokens: 300, cachedInputTokens: 1000 }),
+    ).toBe(210);
+    expect(
+      ds.costForUsage("deepseek-chat", { inputTokens: 1200, outputTokens: 300, cachedInputTokens: 0 }),
+    ).toBe(462);
+  });
+
+  it("reads OpenAI-style cached tokens and skips JSON mode where unsupported", async () => {
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "{}" } }],
+            usage: {
+              prompt_tokens: 500,
+              completion_tokens: 20,
+              prompt_tokens_details: { cached_tokens: 384 },
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const local = new OpenAICompatibleProvider({
+      name: "vllm",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: "none",
+      defaultModel: "qwen",
+      pricingProvider: "vllm",
+      supportsJsonMode: false,
+    });
+    const res = await local.generateText({ messages: [{ role: "user", content: "hi" }], jsonMode: true });
+    expect(res.usage).toEqual({ inputTokens: 500, outputTokens: 20, cachedInputTokens: 384 });
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string) as Record<string, unknown>;
+    expect(body.response_format).toBeUndefined();
+    expect(body).toMatchObject({ model: "qwen", stream: false });
   });
 
   it("estimates cost from the pricing catalog", () => {
