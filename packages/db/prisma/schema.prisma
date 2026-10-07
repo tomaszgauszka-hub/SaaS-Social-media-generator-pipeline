@@ -879,6 +879,8 @@ model ContentProject {
   qaReport              Json?
   costEstimateUsd       Decimal?          @db.Decimal(18, 6)
   revision              Int               @default(1)
+  /// bumped by VOICE regeneration (new take without touching images)
+  voiceRevision         Int               @default(1)
   regenerationCount     Int               @default(0)
   /// contains realistic AI-generated imagery/video → platform AI label
   aiGenerated           Boolean           @default(false)
@@ -1380,6 +1382,8 @@ model TrackedLink {
   appendUtm       Boolean         @default(false)
   /// query param carrying our click id to the destination (sub-id attribution)
   subIdParam      String?
+  /// false = the program forbids redirect/cloaked links: publish destinationUrl directly (network-side attribution)
+  redirect        Boolean         @default(true)
   isActive        Boolean         @default(true)
   expiresAt       DateTime?
   createdAt       DateTime        @default(now())

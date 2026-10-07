@@ -41,7 +41,12 @@ export default defineConfig(
       "@typescript-eslint/switch-exhaustiveness-check": "error",
       "@typescript-eslint/restrict-template-expressions": [
         "error",
-        { allowNumber: true, allowBoolean: true, allowNullish: true },
+        {
+          allowNumber: true,
+          allowBoolean: true,
+          allowNullish: true,
+          allow: [{ name: ["Error", "URL", "URLSearchParams"], from: "lib" }],
+        },
       ],
       eqeqeq: ["error", "always", { null: "ignore" }],
       "no-console": "off",
