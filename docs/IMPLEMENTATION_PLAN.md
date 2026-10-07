@@ -1,6 +1,7 @@
 # Content Revenue Engine — Implementation Plan
 
-> Status: living document. Written at Phase 0 (repository inspection) and updated as phases land.
+> Status: living document. Written at Phase 0 (repository inspection) and updated as phases land — all phases
+> are implemented (see section I); the current architecture is described in `docs/ARCHITECTURE.md`.
 > The goal is **CONTENT → ATTENTION → CLICK → CONVERSION → REVENUE**. Every component below exists to
 > move content along that chain at the lowest possible cost and to _measure_ whether it did.
 
@@ -43,7 +44,7 @@ flowchart TD
     SCHED --> PUB[Social Publishers<br/>Mock · Meta · TikTok]
     PUB --> PLAT[Instagram / TikTok / Facebook]
     PLAT --> ANA[Analytics snapshots<br/>time series, append-only]
-    PLAT -.link in bio / caption link.-> GO[/go/:code tracking redirect/]
+    PLAT -.link in bio / caption link.-> GO["/go/:code tracking redirect"]
     GO --> CLK[(Clicks)]
     CLK --> CONV[(Conversions / Revenue<br/>manual · CSV · webhook)]
     ANA --> LEARN[Learning loop]
@@ -189,8 +190,8 @@ stateDiagram-v2
     WAITING_APPROVAL --> APPROVED
     WAITING_APPROVAL --> REJECTED
     WAITING_APPROVAL --> SCRIPTING: regenerate script / hook
-    WAITING_APPROVAL --> GENERATING_ASSETS: regenerate image / video scene / voice
-    WAITING_APPROVAL --> RENDERING: edit text / caption
+    WAITING_APPROVAL --> GENERATING_ASSETS: regenerate image / video scene / voice, edit on-screen text
+    WAITING_APPROVAL --> QA: edit caption
     REJECTED --> SCRIPTING: regenerate
     APPROVED --> SCHEDULED
     SCHEDULED --> PUBLISHING
@@ -310,27 +311,30 @@ Target: ≤ $0.50 per accepted short video. Expected: Tier 0 ≈ $0.02–0.08, T
 
 ## I. Development phases
 
-| Phase | Scope                                                                                                                                | Status      |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
-| 0     | Repository inspection, this plan, monorepo scaffold, tooling                                                                         | in progress |
-| 1     | Core schema + migrations + seed, shared/config packages, state machines                                                              | planned     |
-| 2     | Mock pipeline end-to-end: providers + mocks, cost ledger, BudgetGuard, router, prompts, strategy, QA, inline dispatcher, `pnpm demo` | planned     |
-| 3     | Approval dashboard (mobile-first) + dashboard pages + tracking redirect                                                              | planned     |
-| 4     | FFmpeg rendering engine (timeline, motion, transitions, typography, subtitles, audio)                                                | planned     |
-| 5     | DeepSeek integration (real adapter, pricing, health check)                                                                           | planned     |
-| 6     | Real image provider (fal.ai FLUX) + background removal + compositing                                                                 | planned     |
-| 7     | Optional TTS (OpenAI / ElevenLabs with timestamps)                                                                                   | planned     |
-| 8     | Optional AI video (fal.ai image-to-video)                                                                                            | planned     |
-| 9     | Meta / TikTok publishing adapters + OAuth + encrypted credentials                                                                    | planned     |
-| 10    | Analytics collection loop (snapshots, windows)                                                                                       | planned     |
-| 11    | Revenue tracking (conversions: manual, CSV, webhook; revenue entries; expenses)                                                      | planned     |
-| 12    | Optimization engine (performance profile → prompts, router evidence, experiments)                                                    | planned     |
+| Phase | Scope                                                                                                                                | Status | Notes                                                                                        |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------ | ------ | -------------------------------------------------------------------------------------------- |
+| 0     | Repository inspection, this plan, monorepo scaffold, tooling                                                                         | done   |                                                                                              |
+| 1     | Core schema + migrations + seed, shared/config packages, state machines                                                              | done   |                                                                                              |
+| 2     | Mock pipeline end-to-end: providers + mocks, cost ledger, BudgetGuard, router, prompts, strategy, QA, inline dispatcher, `pnpm demo` | done   | Integration tests against PostgreSQL + FFmpeg                                                |
+| 3     | Approval dashboard (mobile-first) + dashboard pages + tracking redirect                                                              | done   | All pages of the brief + `/revenue`; verified with a production build and browser automation |
+| 4     | FFmpeg rendering engine (timeline, motion, transitions, typography, subtitles, audio)                                                | done   | Executed before phase 3                                                                      |
+| 5     | DeepSeek integration (real adapter, pricing, health check)                                                                           | done*  |                                                                                              |
+| 6     | Real image provider (fal.ai FLUX) + background removal + compositing                                                                 | done*  |                                                                                              |
+| 7     | Optional TTS (OpenAI / ElevenLabs with timestamps)                                                                                   | done*  |                                                                                              |
+| 8     | Optional AI video (fal.ai image-to-video)                                                                                            | done*  |                                                                                              |
+| 9     | Meta / TikTok publishing adapters + OAuth + encrypted credentials                                                                    | done*  |                                                                                              |
+| 10    | Analytics collection loop (snapshots, windows)                                                                                       | done   | Real collection via the adapters is unverified (*)                                           |
+| 11    | Revenue tracking (conversions: manual, CSV, webhook; revenue entries; expenses)                                                      | done   |                                                                                              |
+| 12    | Optimization engine (performance profile → prompts, router evidence, experiments)                                                    | done   | Hook / caption A/B tests on shared assets                                                    |
 
-Phases 3 and 4 are swapped in execution order where useful: the first milestone needs a real rendered video.
+\* Implemented against the providers' documented APIs and tested with scripted HTTP responses only. No live API
+was called during development (no keys, no spend) — see `docs/PROVIDERS.md` and `docs/SOCIAL_APIS.md` for the
+verification checklist before enabling them.
 
-**First milestone (vertical slice)**: one brand + one product → idea → mock DeepSeek → assets → 20-30 s
+**First milestone (vertical slice)** — reached: one brand + one product → idea → mock DeepSeek → assets → 20-30 s
 1080×1920 video rendered by FFmpeg → QA → approval queue → APPROVE → mock scheduled publication → mock analytics
-→ dashboard shows impressions, clicks, revenue, generation cost and profit. All in mock mode, zero spend.
+→ dashboard shows impressions, clicks, revenue, generation cost and profit. All in mock mode, zero spend
+(`pnpm demo`).
 
 ## J. Definition of Done — Phase 1
 
@@ -371,3 +375,14 @@ Phases 3 and 4 are swapped in execution order where useful: the first milestone 
 - **Products belong to one brand** (simplest correct model); cross-brand sharing can be added with a join table.
 - **Text overlays are rendered with libass (ASS subtitles)** — kinetic typography (pop, slide, karaoke word
   highlight), automatic wrapping, safe margins — instead of dozens of `drawtext` filters.
+- **A/B experiments vary one cheap variable on shared assets**: an alternative on-screen hook (final-pass
+  re-render) for brands without voice-over, or an alternative caption opening for brands with voice-over (so the
+  narration never contradicts the screen). Winners need ≥ 300 impressions per arm and ≥ 10% CTR lift.
+- **Budgets apply to simulated costs in mock mode** (so blocking and tier downgrades can be tested for free); the
+  system-wide hard cap counts real money only.
+- **TikTok posts are private by default** (`TIKTOK_PRIVACY_LEVEL=SELF_ONLY`); commercial-content toggles are set
+  per post on visible posts.
+- **Conversion payloads are redacted** before storage (buyer e-mail, names, IPs, customer ids), and `/go` limits
+  recorded clicks per visitor IP and link to resist click floods.
+- **Application container images are not provided**: Docker Compose covers development services; the documented
+  production path runs web and worker as Node processes (verified), see `docs/DEPLOYMENT.md`.
