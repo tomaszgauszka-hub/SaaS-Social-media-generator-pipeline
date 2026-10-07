@@ -25,6 +25,9 @@ export interface ApprovalItem {
   variants: {
     id: string;
     platform: string;
+    armKey: string;
+    armHook: string | null;
+    videoAssetId: string | null;
     caption: string;
     disclosure: string | null;
     link: string | null;
@@ -182,6 +185,7 @@ export function ApprovalCard({ item }: { item: ApprovalItem }) {
                     className={`rounded-t-lg px-3 py-1.5 text-xs font-semibold ${tab === v.id ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600"}`}
                   >
                     {PLATFORM_LABEL[v.platform] ?? v.platform}
+                    {v.armKey !== "A" ? ` · test ${v.armKey}` : ""}
                   </button>
                 ))}
               </div>
@@ -190,6 +194,27 @@ export function ApprovalCard({ item }: { item: ApprovalItem }) {
                   role="tabpanel"
                   className="rounded-b-lg rounded-tr-lg border border-zinc-200 p-3 text-sm"
                 >
+                  {active.armKey !== "A" ? (
+                    <p className="mb-2 rounded bg-violet-50 px-2 py-1 text-xs text-violet-800">
+                      A/B test arm {active.armKey}
+                      {active.armHook ? <> — alternative hook “{active.armHook.replace(/\*/g, "")}”</> : null}
+                      {active.videoAssetId && active.videoAssetId !== item.videoAssetId ? (
+                        <>
+                          {" · "}
+                          <a
+                            href={`/api/assets/${active.videoAssetId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline"
+                          >
+                            watch arm {active.armKey}
+                          </a>
+                        </>
+                      ) : (
+                        " · same video, different caption opening"
+                      )}
+                    </p>
+                  ) : null}
                   <p className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words">{active.caption}</p>
                   {active.firstComment ? (
                     <p className="mt-2 text-xs text-zinc-500">First comment: {active.firstComment}</p>
@@ -281,6 +306,7 @@ export function ApprovalCard({ item }: { item: ApprovalItem }) {
                     className="size-4"
                   />
                   {PLATFORM_LABEL[v.platform] ?? v.platform}
+                  {v.armKey !== "A" ? ` · test ${v.armKey}` : ""}
                 </label>
               ))}
               <button
@@ -431,7 +457,10 @@ export function ApprovalCard({ item }: { item: ApprovalItem }) {
               </label>
               {item.variants.map((v) => (
                 <label key={v.id} className="block">
-                  <span className="label">{PLATFORM_LABEL[v.platform] ?? v.platform} caption</span>
+                  <span className="label">
+                    {PLATFORM_LABEL[v.platform] ?? v.platform}
+                    {v.armKey !== "A" ? ` (test ${v.armKey})` : ""} caption
+                  </span>
                   <textarea
                     value={captions[v.id] ?? ""}
                     onChange={(e) => setCaptions((c) => ({ ...c, [v.id]: e.target.value }))}

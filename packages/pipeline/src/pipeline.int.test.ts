@@ -19,6 +19,7 @@ import { createPipelineContext, ManualClock, type PipelineContext } from "./cont
 import { InlineDispatcher } from "./dispatch/inline.ts";
 import { runJob } from "./runner.ts";
 import { publisherFor } from "./social.ts";
+import { concludeExperiments } from "./steps/experiments.ts";
 import { resumeBudgetBlocked } from "./steps/maintenance.ts";
 
 /**
@@ -348,6 +349,44 @@ describe("safety rails", () => {
     expect(edited.status).toBe("WAITING_APPROVAL");
     expect(JSON.stringify(edited.renderSpec)).toContain("Owner *edited* hook");
     expect(edited.variants.find((v) => v.id === variant.id)?.caption).toBe(caption);
+  });
+
+  it("runs a cheap hook A/B test end to end: extra arm reuses assets, both arms publish, CTR decides", async () => {
+    const brandId = brands["demo-beauty"]!;
+    await prisma.brand.update({
+      where: { id: brandId },
+      data: { experimentsEnabled: true, ttsEnabled: false },
+    });
+    clock.advance(60_000); // a new ideation request (same-instant requests are de-duplicated by design)
+    const projectId = await produce("demo-beauty");
+    const project = await prisma.contentProject.findUniqueOrThrow({
+      where: { id: projectId },
+      include: { experiments: true, variants: { include: { media: true } } },
+    });
+    expect(project.status).toBe("WAITING_APPROVAL");
+    expect(project.experiments).toHaveLength(1);
+    expect(project.experiments[0]!.variable).toBe("HOOK");
+    const platform = project.experiments[0]!.primaryPlatform;
+    const armA = project.variants.find((v) => v.platform === platform && v.armKey === "A")!;
+    const armB = project.variants.find((v) => v.platform === platform && v.armKey === "B")!;
+    expect(armB.status).toBe("READY");
+    const video = (v: typeof armA) => v.media.find((m) => m.role === "VIDEO")?.assetId;
+    expect(video(armB)).toBeDefined();
+    expect(video(armB)).not.toBe(video(armA)); // different on-screen hook → its own (cached-scene) render
+    expect(armB.trackedLinkId).not.toBe(armA.trackedLinkId); // per-arm click attribution
+    // the B render cost nothing extra: only one set of paid images/LLM calls for the project
+    const paid = await prisma.generationUsage.count({ where: { projectId, operation: "IMAGE_GENERATION" } });
+    expect(paid).toBeLessThanOrEqual(2);
+
+    const { publications } = await approveContent(prisma, { projectId, userId: ownerId, now: clock.now() });
+    expect(publications.length).toBe(project.variants.length);
+    await dispatcher.runUntil(addDays(clock.now(), 9));
+    expect(await concludeExperiments(ctx, clock.now())).toBe(1);
+    const exp = await prisma.experiment.findUniqueOrThrow({ where: { id: project.experiments[0]!.id } });
+    expect(exp.status).toBe("CONCLUDED");
+    const results = exp.results as { arms: { key: string; impressions: number }[]; method: string };
+    expect(results.method).toBe("ctr-compare-v1");
+    expect(results.arms.every((a) => a.impressions > 0)).toBe(true);
   });
 
   it("QA auto-rejects non-compliant content, tries one automatic fix, then leaves it for the owner", async () => {

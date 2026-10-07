@@ -8,6 +8,7 @@ import type { PipelineContext } from "../context.ts";
 import { payloadString, type JobExecution } from "../job-types.ts";
 import { economicOutcomeFor } from "../prompt-context.ts";
 import { accountRef, loadSocialCredentials, publisherFor } from "../social.ts";
+import { armOverrides } from "./experiments.ts";
 import { enqueue } from "../outbox.ts";
 
 const CONVERSION_TYPE: Record<string, ConversionType> = {
@@ -149,7 +150,7 @@ export async function analyticsCollectHandler(exec: JobExecution) {
     signal: exec.signal,
     hints: {
       qaScore: project.qaScore,
-      hookStyle: project.hookStyle,
+      hookStyle: armOverrides(pub.variant).hookStyle ?? project.hookStyle,
       durationMs: project.durationMs,
       seed: pub.id,
     },
@@ -285,7 +286,7 @@ export async function performanceRecords(
     return {
       projectId: project.id,
       platform: p.platform,
-      hookStyle: project.hookStyle,
+      hookStyle: armOverrides(p.variant).hookStyle ?? project.hookStyle,
       angle: project.angle,
       ctaType: project.ctaType,
       durationMs: project.durationMs,

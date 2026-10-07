@@ -30,6 +30,7 @@ import {
 } from "../prompt-context.ts";
 import { resolveLinkTarget } from "../variants.ts";
 import { voiceoverText } from "./assets.ts";
+import { armOverrides } from "./experiments.ts";
 import type { StoredScript } from "./script.ts";
 
 /** Automatic retries after a QA auto-reject (script rewrite with the findings as feedback). */
@@ -176,9 +177,13 @@ export async function qaHandler(exec: JobExecution) {
   const brand = project.brand;
   const script = (project.script ?? null) as StoredScript | null;
   const spec = VideoProject.safeParse(project.renderSpec);
-  const onScreenTexts = spec.success
-    ? spec.data.texts.map((t) => t.text.replace(/\s*\n\s*/g, " "))
-    : project.scenes.map((s) => s.onScreenText ?? "").filter(Boolean);
+  const onScreenTexts = [
+    ...(spec.success
+      ? spec.data.texts.map((t) => t.text.replace(/\s*\n\s*/g, " "))
+      : project.scenes.map((s) => s.onScreenText ?? "").filter(Boolean)),
+    // A/B arm hooks are checked like the original hook
+    ...project.variants.map((v) => armOverrides(v).hook).filter((h): h is string => Boolean(h)),
+  ];
   const voiceover = voiceoverText(project.scenes);
   const target = await resolveLinkTarget(ctx.prisma, project);
   const variants = project.variants.filter((v) => v.status === "PENDING");

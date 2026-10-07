@@ -68,6 +68,7 @@ export default async function ContentDetailPage({ params }: { params: Promise<{ 
       usages: { orderBy: { createdAt: "asc" } },
       jobs: { orderBy: { createdAt: "asc" }, include: { events: { orderBy: { createdAt: "asc" } } } },
       masterAsset: { include: { inputs: { include: { inputAsset: true } } } },
+      experiments: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!project) notFound();
@@ -464,6 +465,68 @@ export default async function ContentDetailPage({ params }: { params: Promise<{ 
             ))}
           </ol>
         </Card>
+
+        {project.experiments.length ? (
+          <Card title="A/B experiments">
+            <ul className="space-y-3 text-sm">
+              {project.experiments.map((x) => {
+                const arms = (x.arms ?? []) as { key: string; label: string; value: string }[];
+                const results = (x.results ?? null) as {
+                  arms?: { key: string; impressions: number; clicks: number; ctr: number | null }[];
+                  liftPct?: number | null;
+                  reason?: string;
+                  simulated?: boolean;
+                } | null;
+                return (
+                  <li key={x.id}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone="violet">{x.variable.toLowerCase()} test</Badge>
+                      <StatusBadge
+                        status={
+                          x.status === "RUNNING"
+                            ? "RUNNING"
+                            : x.status === "CONCLUDED"
+                              ? "SUCCEEDED"
+                              : "CANCELLED"
+                        }
+                      />
+                      <span className="text-xs text-zinc-500">
+                        {x.primaryPlatform.toLowerCase()} · metric {x.metric}
+                      </span>
+                      {x.winnerArmKey ? <Badge tone="green">winner {x.winnerArmKey}</Badge> : null}
+                    </div>
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                      {arms.map((a) => {
+                        const r = results?.arms?.find((y) => y.key === a.key);
+                        return (
+                          <li key={a.key}>
+                            <strong>{a.key}</strong> ({a.label}): “{a.value.replace(/\*/g, "")}”
+                            {r ? (
+                              <span className="text-zinc-500">
+                                {" "}
+                                — {num(r.impressions)} impressions, {num(r.clicks)} clicks, CTR{" "}
+                                {pct(r.ctr, 2)}
+                              </span>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {results?.reason ? (
+                      <p className="mt-1 text-xs text-zinc-500">
+                        {results.reason}
+                        {results.liftPct !== null && results.liftPct !== undefined
+                          ? ` · lift ${results.liftPct}%`
+                          : ""}
+                        {results.simulated ? " · simulated data" : ""}
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        ) : null}
 
         <Card title="Decisions">
           {project.approvals.length === 0 ? (

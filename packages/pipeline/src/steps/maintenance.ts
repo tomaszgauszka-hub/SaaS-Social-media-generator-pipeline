@@ -4,6 +4,7 @@ import { addDays, addHours, idempotencyKey, zonedParts, type BudgetBlockReason }
 import type { PipelineContext } from "../context.ts";
 import type { JobExecution } from "../job-types.ts";
 import { enqueueProfile } from "./analytics.ts";
+import { concludeExperiments } from "./experiments.ts";
 
 /** Projects still moving through the pipeline (count against a brand's ideation cycle). */
 const IN_FLIGHT: ContentStatus[] = [
@@ -160,6 +161,7 @@ export async function maintenanceTickHandler(exec: JobExecution) {
   const ideation = await scheduleAutoIdeation(ctx, now);
   const archived = await archiveFinished(ctx, now);
   const staleReservations = await settleStaleReservations(ctx, now);
+  const experiments = await concludeExperiments(ctx, now);
   // daily learning-profile refresh for brands that published in the last two weeks
   const active = await ctx.prisma.publication.findMany({
     where: { status: "PUBLISHED", publishedAt: { gte: addDays(now, -14) } },
@@ -168,5 +170,5 @@ export async function maintenanceTickHandler(exec: JobExecution) {
   });
   if (now.getUTCHours() === 3)
     for (const a of active) await enqueueProfile(ctx, a.workspaceId, a.brandId, now);
-  return { resumed: resumed.length, ideation, archived, staleReservations };
+  return { resumed: resumed.length, ideation, archived, staleReservations, experiments };
 }

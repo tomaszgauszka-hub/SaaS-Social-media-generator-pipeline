@@ -33,7 +33,11 @@ export default async function ApprovalPage({ searchParams }: { searchParams: Pro
     include: {
       brand: { select: { name: true } },
       product: { select: { title: true } },
-      variants: { where: { status: "READY" }, include: { trackedLink: true }, orderBy: { platform: "asc" } },
+      variants: {
+        where: { status: "READY" },
+        include: { trackedLink: true, media: { where: { role: "VIDEO" }, select: { assetId: true } } },
+        orderBy: [{ platform: "asc" }, { armKey: "asc" }],
+      },
       scenes: {
         orderBy: { index: "asc" },
         select: { id: true, index: true, kind: true, onScreenText: true, visualType: true },
@@ -76,6 +80,9 @@ export default async function ApprovalPage({ searchParams }: { searchParams: Pro
       variants: p.variants.map((v) => ({
         id: v.id,
         platform: v.platform,
+        armKey: v.armKey,
+        armHook: (v.overrides as { hook?: string } | null)?.hook ?? null,
+        videoAssetId: v.media[0]?.assetId ?? null,
         caption: v.caption ?? "",
         disclosure: v.disclosureText,
         link: v.trackedLink ? publicLinkUrl(appUrl, v.trackedLink) : null,

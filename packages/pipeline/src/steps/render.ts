@@ -12,6 +12,7 @@ import {
   SCENE_RENDERER_VERSION,
   TransitionType,
   type BrandStyle,
+  type LayoutViolation,
   type Storyboard,
   type StoryboardScene,
   type StoryboardSceneKind,
@@ -34,6 +35,7 @@ import {
   variantLinkUrl,
 } from "../variants.ts";
 import { desiredAssets, type DesiredAsset } from "./assets.ts";
+import { captionWithOpening, createExperiment, planExperiment } from "./experiments.ts";
 import type { StoredScript } from "./script.ts";
 import { enqueue } from "../outbox.ts";
 
@@ -190,6 +192,124 @@ function sceneVisual(scene: Scene, inputs: RenderInputs): StoryboardVisual {
   return { type: "card" };
 }
 
+interface RenderedMaster {
+  master: Asset;
+  cover: Asset;
+  stats: Record<string, unknown>;
+  violations: LayoutViolation[];
+}
+
+/** Render one VideoProject to RENDERED_VIDEO + THUMBNAIL assets (or reuse an identical earlier render). */
+async function renderMaster(
+  exec: JobExecution,
+  project: { id: string; workspaceId: string; brandId: string; revision: number },
+  inputs: RenderInputs,
+  videoProject: VideoProject,
+  templateKey: string,
+  arm: string,
+): Promise<RenderedMaster> {
+  const { ctx } = exec;
+  const sb = { format: videoProject.format };
+  const violations = findLayoutViolations(videoProject);
+  const specHash = sha256Hex(
+    stableStringify({ videoProject, scenes: SCENE_RENDERER_VERSION, compositor: COMPOSITOR_VERSION }),
+  ).slice(0, 32);
+  const videoKey = idempotencyKey("asset:render", { projectId: project.id, spec: specHash });
+  let master = await ensureAssetRow(ctx.prisma, {
+    idempotencyKey: videoKey,
+    workspaceId: project.workspaceId,
+    brandId: project.brandId,
+    projectId: project.id,
+    kind: "RENDERED_VIDEO",
+    origin: "RENDERED",
+    params: { templateKey, width: sb.format.width, height: sb.format.height, fps: sb.format.fps, arm },
+    revision: project.revision,
+  });
+  let cover = await ensureAssetRow(ctx.prisma, {
+    idempotencyKey: idempotencyKey("asset:cover", { video: videoKey }),
+    workspaceId: project.workspaceId,
+    brandId: project.brandId,
+    projectId: project.id,
+    kind: "THUMBNAIL",
+    origin: "RENDERED",
+    revision: project.revision,
+  });
+  let renderStats: Record<string, unknown> = { reused: true };
+  if (master.status !== "READY" || cover.status !== "READY") {
+    const paths = new Map<string, string>();
+    for (const u of inputs.used) paths.set(ref(u.asset), await assetLocalPath(ctx, u.asset));
+    const outputPath = path.join(exec.workDir, `${arm}-master.mp4`);
+    const coverPath = path.join(exec.workDir, `${arm}-cover.jpg`);
+    const result = await renderVideoProject(videoProject, {
+      resolveSrc: (src) => {
+        const p = paths.get(src);
+        if (!p) throw new FatalError(`Render input not resolved: ${src}`);
+        return p;
+      },
+      workDir: path.join(exec.workDir, `render-${arm}`),
+      cacheDir: path.join(ctx.cacheDir, "scenes"),
+      outputPath,
+      coverPath,
+      signal: exec.signal,
+      preset: ctx.render.preset,
+      oversample: ctx.render.oversample,
+      onProgress: (e) => exec.log.debug(e, "render progress"),
+    });
+    renderStats = {
+      reused: false,
+      totalMs: result.totalMs,
+      cachedScenes: result.scenes.filter((x) => x.cached).length,
+      scenes: result.scenes.length,
+    };
+    const mockInputs = inputs.used.some((u) => u.asset.isMock);
+    master = await markAssetReady(
+      ctx,
+      ctx.prisma,
+      master,
+      outputPath,
+      {
+        provider: "ffmpeg",
+        model: `compositor-v${COMPOSITOR_VERSION}.${SCENE_RENDERER_VERSION}`,
+        params: {
+          templateKey,
+          width: sb.format.width,
+          height: sb.format.height,
+          fps: sb.format.fps,
+          specHash,
+          arm,
+        },
+        costMicros: 0,
+        license: "composite of the listed input assets",
+        isMock: false,
+        metadata: {
+          layoutViolations: violations,
+          render: renderStats,
+          mockInputs,
+          timelineMs: result.timeline.totalMs,
+        },
+        inputs: inputs.used.map((u) => ({ assetId: u.asset.id, role: u.role })),
+      },
+      "video/mp4",
+    );
+    cover = await markAssetReady(
+      ctx,
+      ctx.prisma,
+      cover,
+      coverPath,
+      {
+        provider: "ffmpeg",
+        model: "frame-extract",
+        costMicros: 0,
+        license: "frame of the master video",
+        isMock: false,
+        inputs: [{ assetId: master.id, role: "video" }],
+      },
+      "image/jpeg",
+    );
+  }
+  return { master, cover, stats: renderStats, violations };
+}
+
 /** pipeline.render — storyboard → VideoProject (layout engine) → FFmpeg → master video, cover and platform variants. */
 export async function renderHandler(exec: JobExecution) {
   const { ctx } = exec;
@@ -305,104 +425,29 @@ export async function renderHandler(exec: JobExecution) {
     output: { preset: ctx.render.preset },
   };
   const videoProject: VideoProject = layoutStoryboard(sb);
-  const violations = findLayoutViolations(videoProject);
-  const specHash = sha256Hex(
-    stableStringify({ videoProject, scenes: SCENE_RENDERER_VERSION, compositor: COMPOSITOR_VERSION }),
-  ).slice(0, 32);
+  const {
+    master,
+    cover,
+    stats: renderStats,
+    violations,
+  } = await renderMaster(exec, project, inputs, videoProject, templateKey, "A");
 
-  // ---- render (or reuse an identical earlier render) -----------------------------------------------------
-  const videoKey = idempotencyKey("asset:render", { projectId: project.id, spec: specHash });
-  let master = await ensureAssetRow(ctx.prisma, {
-    idempotencyKey: videoKey,
-    workspaceId: project.workspaceId,
-    brandId: project.brandId,
-    projectId: project.id,
-    kind: "RENDERED_VIDEO",
-    origin: "RENDERED",
-    params: { templateKey, width: sb.format.width, height: sb.format.height, fps: sb.format.fps },
-    revision: project.revision,
-  });
-  let cover = await ensureAssetRow(ctx.prisma, {
-    idempotencyKey: idempotencyKey("asset:cover", { video: videoKey }),
-    workspaceId: project.workspaceId,
-    brandId: project.brandId,
-    projectId: project.id,
-    kind: "THUMBNAIL",
-    origin: "RENDERED",
-    revision: project.revision,
-  });
-  let renderStats: Record<string, unknown> = { reused: true };
-  if (master.status !== "READY" || cover.status !== "READY") {
-    const paths = new Map<string, string>();
-    for (const u of inputs.used) paths.set(ref(u.asset), await assetLocalPath(ctx, u.asset));
-    const outputPath = path.join(exec.workDir, "master.mp4");
-    const coverPath = path.join(exec.workDir, "cover.jpg");
-    const result = await renderVideoProject(videoProject, {
-      resolveSrc: (src) => {
-        const p = paths.get(src);
-        if (!p) throw new FatalError(`Render input not resolved: ${src}`);
-        return p;
-      },
-      workDir: path.join(exec.workDir, "render"),
-      cacheDir: path.join(ctx.cacheDir, "scenes"),
-      outputPath,
-      coverPath,
-      signal: exec.signal,
-      preset: ctx.render.preset,
-      oversample: ctx.render.oversample,
-      onProgress: (e) => exec.log.debug(e, "render progress"),
-    });
-    renderStats = {
-      reused: false,
-      totalMs: result.totalMs,
-      cachedScenes: result.scenes.filter((s) => s.cached).length,
-      scenes: result.scenes.length,
-    };
-    const mockInputs = inputs.used.some((u) => u.asset.isMock);
-    master = await markAssetReady(
-      ctx,
-      ctx.prisma,
-      master,
-      outputPath,
-      {
-        provider: "ffmpeg",
-        model: `compositor-v${COMPOSITOR_VERSION}.${SCENE_RENDERER_VERSION}`,
-        params: {
+  // ---- optional A/B experiment: reuses every asset (hook test = one more final pass, caption test = free) ----
+  const experiment = await planExperiment(ctx, project, script, platforms);
+  const armB =
+    experiment?.variable === "HOOK"
+      ? await renderMaster(
+          exec,
+          project,
+          inputs,
+          layoutStoryboard({
+            ...sb,
+            scenes: sb.scenes.map((sc, i) => (i === 0 ? { ...sc, headline: experiment.hook } : sc)),
+          }),
           templateKey,
-          width: sb.format.width,
-          height: sb.format.height,
-          fps: sb.format.fps,
-          specHash,
-        },
-        costMicros: 0,
-        license: "composite of the listed input assets",
-        isMock: false,
-        metadata: {
-          layoutViolations: violations,
-          render: renderStats,
-          mockInputs,
-          timelineMs: result.timeline.totalMs,
-        },
-        inputs: inputs.used.map((u) => ({ assetId: u.asset.id, role: u.role })),
-      },
-      "video/mp4",
-    );
-    cover = await markAssetReady(
-      ctx,
-      ctx.prisma,
-      cover,
-      coverPath,
-      {
-        provider: "ffmpeg",
-        model: "frame-extract",
-        costMicros: 0,
-        license: "frame of the master video",
-        isMock: false,
-        inputs: [{ assetId: master.id, role: "video" }],
-      },
-      "image/jpeg",
-    );
-  }
+          "B",
+        )
+      : null;
 
   // ---- platform variants + state change ----------------------------------------------------------------
   const variantIds: string[] = [];
@@ -459,6 +504,80 @@ export async function renderHandler(exec: JobExecution) {
             create: { variantId: variant.id, assetId: asset.id, role, position: 0 },
             update: { assetId: asset.id },
           });
+        }
+      }
+      if (experiment) {
+        const experimentId = await createExperiment(tx, {
+          projectId: project.id,
+          plan: experiment,
+          hookA: project.hook ?? "",
+          styleA: project.hookStyle ?? "original",
+        });
+        await tx.contentVariant.updateMany({
+          where: { projectId: project.id, platform: experiment.platform, armKey: "A" },
+          data: { experimentId },
+        });
+        const variantB =
+          project.variants.find((v) => v.platform === experiment.platform && v.armKey === "B") ??
+          (await tx.contentVariant.create({
+            data: {
+              projectId: project.id,
+              platform: experiment.platform,
+              placement: "REEL",
+              status: "PENDING",
+              armKey: "B",
+              experimentId,
+              overrides: toJson({
+                hook: experiment.hook,
+                hookStyle: experiment.hookStyle,
+              }) as Prisma.InputJsonValue,
+            },
+          }));
+        if (variantB.status === "PENDING") {
+          variantIds.push(variantB.id);
+          const link = target
+            ? await ensureVariantLink(tx, { variant: variantB, project, brandSlug: brand.slug, target })
+            : null;
+          const platformCopy = script?.platformCaptions?.find((c) => c.platform === experiment.platform);
+          const composed = composeCaption({
+            platform: experiment.platform,
+            body: captionWithOpening(
+              platformCopy?.caption ?? project.caption ?? project.title,
+              experiment.hook,
+            ),
+            hashtags: platformCopy?.hashtags ?? project.hashtags,
+            disclosure: planDisclosures(brand.disclosureRules, experiment.platform, {
+              isMonetized,
+              aiGenerated,
+            }),
+            programDisclosure: target?.programDisclosure ?? null,
+            linkUrl: PLATFORM_LIMITS[experiment.platform].linkClickable
+              ? variantLinkUrl(ctx.env.APP_URL, link)
+              : null,
+          });
+          await tx.contentVariant.update({
+            where: { id: variantB.id },
+            data: {
+              caption: composed.caption,
+              hashtags: composed.hashtags,
+              firstComment: platformCopy?.firstComment ?? null,
+              disclosureText: composed.disclosureText,
+              aiGenerated,
+              experimentId,
+              qaScore: null,
+              qaIssues: Prisma.DbNull,
+            },
+          });
+          for (const [role, asset] of [
+            ["VIDEO", armB?.master ?? master],
+            ["COVER", armB?.cover ?? cover],
+          ] as const) {
+            await tx.variantMedia.upsert({
+              where: { variantId_role_position: { variantId: variantB.id, role, position: 0 } },
+              create: { variantId: variantB.id, assetId: asset.id, role, position: 0 },
+              update: { assetId: asset.id },
+            });
+          }
         }
       }
       await transitionContent(tx, {
