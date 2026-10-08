@@ -841,7 +841,12 @@ const Badge: React.FC<Props<"badge">> = ({ plan, beat, overlay: o, ms }) => {
 
 const Panel: React.FC<Props<"panel">> = ({ plan, overlay: o, ms }) => {
   const p = plan.style.palette;
-  const e = prog(ms - o.delayMs, 0, 420, ease.outCubic);
+  const local = ms - o.delayMs;
+  const e = prog(local, 0, 420, ease.outCubic);
+  // a card is opaque from its first frame and rises into place — any fade shows a grey ghost box
+  const opacity = local >= 0 ? 1 : 0;
+  // a card that holds a building list unrolls with its rows instead of standing there half empty
+  const unroll = o.reveal ? o.reveal.from + (1 - o.reveal.from) * clamp01(local / o.reveal.ms) : 1;
   const bg =
     o.tone === "surface"
       ? p.surface
@@ -870,8 +875,14 @@ const Panel: React.FC<Props<"panel">> = ({ plan, overlay: o, ms }) => {
             ? "0 30px 80px rgba(0,0,0,0.55)"
             : "0 26px 70px rgba(60,40,20,0.18)"
           : undefined,
-        opacity: e,
-        transform: `translateY(${(1 - e) * 60}px)`,
+        opacity,
+        transform: o.reveal
+          ? undefined
+          : `translateY(${(1 - e) * 60}px) scale(${(0.96 + 0.04 * e).toFixed(4)})`,
+        clipPath:
+          unroll < 1
+            ? `inset(0 0 ${((1 - unroll) * 100).toFixed(2)}% 0 round ${plan.style.radius}px)`
+            : undefined,
       }}
     />
   );
@@ -1180,7 +1191,6 @@ const IconChip: React.FC<Props<"icon_chip">> = ({ plan, beat, overlay: o, ms }) 
   const iconSize = o.box.h * 0.46;
   // width follows the measured label so the pill hugs its text
   const w = t ? Math.min(o.box.w, o.box.h + 4 + t.width + 34) : o.box.w;
-  const reveal = clamp01(local / 380);
   return (
     <div
       style={{
@@ -1195,8 +1205,8 @@ const IconChip: React.FC<Props<"icon_chip">> = ({ plan, beat, overlay: o, ms }) 
         backdropFilter: o.tone === "light" ? "blur(6px)" : undefined,
         transform: `translateY(${((1 - s) * 26).toFixed(2)}px) scale(${(0.86 + 0.14 * s).toFixed(4)})`,
         transformOrigin: `${r}px 50%`,
+        // pops in whole: a width wipe would show half words in any paused frame
         opacity: clamp01(local / 160),
-        clipPath: `inset(0 ${((1 - reveal) * 100 * (1 - o.box.h / w)).toFixed(2)}% 0 0 round ${r}px)`,
       }}
     >
       <div

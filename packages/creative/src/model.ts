@@ -375,6 +375,8 @@ export const Overlay = z.discriminatedUnion("kind", [
     box: Rect,
     tone: z.enum(["surface", "glass", "dark", "accent", "outline", "scrim"]),
     shadow: z.boolean().default(true),
+    /** unroll top-down with the content it holds: visible fraction at entry, then ms to full height */
+    reveal: z.object({ from: z.number().min(0).max(1), ms: z.number().positive() }).optional(),
   }),
   z.object({
     ...base,

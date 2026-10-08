@@ -614,7 +614,7 @@ function statBeat(c: Ctx, id: string): Draft | null {
           assetId: mediaId,
           slot: "background",
           box: c.isProduct(mediaId)
-            ? rect(170, 990, 740, G.CONTENT_BOTTOM - 1030)
+            ? rect(150, 975, 780, G.CONTENT_BOTTOM - 1005)
             : rect(0, 980, FRAME_WIDTH, 940),
           crop: c.isProduct(mediaId) ? "contain" : "cover",
           motion: "slow_zoom",
@@ -714,7 +714,15 @@ function listBeat(c: Ctx, id: string, kind: "SPECS" | "CHECKLIST" | "RECAP"): Dr
   const inner = rect(panel.x + 36, panel.y + 34, panel.w - 72, panel.h - 68);
   const rows = listRows(inner, n);
   const overlays: Overlay[] = [
-    { id: `${id}.panel`, kind: "panel", delayMs: 120, box: panel, tone: "surface", shadow: true },
+    {
+      id: `${id}.panel`,
+      kind: "panel",
+      delayMs: PANEL_DELAY_MS,
+      box: panel,
+      tone: "surface",
+      shadow: true,
+      ...(kind === "SPECS" ? { reveal: unrollWithRows(panel, rows, SPEC_STAGGER_MS) } : {}),
+    },
   ];
   if (kind === "SPECS" && c.brief.specs) {
     overlays.push({
@@ -726,7 +734,7 @@ function listBeat(c: Ctx, id: string, kind: "SPECS" | "CHECKLIST" | "RECAP"): Dr
       staggerMs: SPEC_STAGGER_MS,
       items: c.brief.specs.items.map((it, i) => {
         const b = specRowBoxes(rows[i]!);
-        const at = 300 + i * SPEC_STAGGER_MS;
+        const at = ROWS_START_MS + i * SPEC_STAGGER_MS;
         return {
           labelSlot: c.slot(id, `label${i + 1}`, it.label, "SPEC", b.label, 1, at),
           valueSlot: c.slot(id, `value${i + 1}`, it.value, "SPEC", b.value, 1, at),
@@ -1023,7 +1031,7 @@ function ctaBeat(c: Ctx, id: string): Draft {
   const text: TextElement[] = [
     c.text(id, "headline", brief.cta.headline, "HEADLINE", rect(inner.x, inner.y, inner.w, 200), {
       maxLines: 2,
-      delayMs: 220,
+      delayMs: 80,
       color: "surfaceInk",
     }),
   ];
@@ -1031,7 +1039,7 @@ function ctaBeat(c: Ctx, id: string): Draft {
     text.push(
       c.text(id, "sub", brief.cta.sub, "CAPTION", rect(inner.x, panel.y + panel.h - 96, inner.w, 56), {
         maxLines: 1,
-        delayMs: 700,
+        delayMs: 560,
         color: "surfaceInk",
       }),
     );
@@ -1061,25 +1069,27 @@ function ctaBeat(c: Ctx, id: string): Draft {
             shadow: true,
             backlight: true,
             params: brief.heroParams,
+            // the end card is never a still: the product does its hero gesture again under the offer
+            animate: brief.heroAnimate,
           }),
         ],
     ...(scene ? { background: "media" as const } : {}),
     text,
     overlays: [
-      { id: `${id}.panel`, kind: "panel", delayMs: 80, box: panel, tone: "surface", shadow: true },
+      { id: `${id}.panel`, kind: "panel", delayMs: 0, box: panel, tone: "surface", shadow: true },
       {
         id: `${id}.button`,
         kind: "badge",
-        delayMs: 480,
+        delayMs: 360,
         box: buttonBox,
-        textSlot: c.slot(id, "button", brief.cta.button, "CTA", buttonBox, 1, 480),
+        textSlot: c.slot(id, "button", brief.cta.button, "CTA", buttonBox, 1, 360),
         tone: "accent",
       },
     ],
     baseMs: 2900,
     showsProduct: true,
     transition: "scale_in",
-    sfx: [{ atMs: 480, kind: "pop" }],
+    sfx: [{ atMs: 360, kind: "pop" }],
     note: scene ? `CTA over ${scene.media}` : "CTA card with product",
   };
 }
@@ -1361,6 +1371,8 @@ function cameraFor(d: Draft, energy: number, side: 1 | -1): VisualBeat["camera"]
     }
     case "cta_card":
     case "list_card":
+      // product above a card: the frame-centre push carries it up and away from the card — a visible move
+      return { zoom: [1, 1.12 - energy * 0.03], x: [0, side * 28], y: [0, -12] };
     case "stat_big":
     case "steps_row": {
       // product on a set: a clear push-in with a lateral drift — a product that only floats reads as a still;
@@ -1387,6 +1399,23 @@ function productOrigin(d: Draft): { x: number; y: number } | undefined {
 const beatId = (n: number) => `s${String(n).padStart(2, "0")}`;
 
 const SPEC_STAGGER_MS = 420;
+const PANEL_DELAY_MS = 120;
+/** list rows enter at 300 ms + i × stagger (beat time) */
+const ROWS_START_MS = 300;
+
+/**
+ * Panel unroll that stays just ahead of the rows: when row i appears the card already reaches below it, and
+ * the card is full height when the last row lands. Rows are evenly spaced in time and space, so it is linear.
+ */
+function unrollWithRows(panel: Rect, rows: Rect[], staggerMs: number): { from: number; ms: number } {
+  const margin = 18;
+  const bottom = (i: number) => (rows[i]!.y + rows[i]!.h + margin - panel.y) / panel.h;
+  const rowFrac = rows.length > 1 ? bottom(1) - bottom(0) : 1;
+  const k = rowFrac / staggerMs; // panel fraction per ms
+  const firstAt = ROWS_START_MS - PANEL_DELAY_MS;
+  const from = Math.min(1, Math.max(0.12, bottom(0) - k * firstAt));
+  return { from, ms: Math.max(200, (1 - from) / k) };
+}
 
 /** transitions that blend the outgoing and incoming frames at partial opacity */
 const DISSOLVES = new Set<TransitionType>(["fade", "scale_in"]);
