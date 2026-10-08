@@ -427,6 +427,7 @@ function heroBeat(c: Ctx, id: string, prev: Draft | undefined): Draft {
         shadow: true,
         backlight: true,
         params: brief.heroParams,
+        animate: brief.heroAnimate,
       }),
     ],
     text,
@@ -721,12 +722,14 @@ function listBeat(c: Ctx, id: string, kind: "SPECS" | "CHECKLIST" | "RECAP"): Dr
       kind: "spec_list",
       delayMs: 300,
       box: inner,
-      staggerMs: 170,
+      // rows land one per music beat so the table builds up instead of freezing after the first second
+      staggerMs: SPEC_STAGGER_MS,
       items: c.brief.specs.items.map((it, i) => {
         const b = specRowBoxes(rows[i]!);
+        const at = 300 + i * SPEC_STAGGER_MS;
         return {
-          labelSlot: c.slot(id, `label${i + 1}`, it.label, "SPEC", b.label, 1, 300 + i * 170),
-          valueSlot: c.slot(id, `value${i + 1}`, it.value, "SPEC", b.value, 1, 300 + i * 170),
+          labelSlot: c.slot(id, `label${i + 1}`, it.label, "SPEC", b.label, 1, at),
+          valueSlot: c.slot(id, `value${i + 1}`, it.value, "SPEC", b.value, 1, at),
         };
       }),
     });
@@ -763,7 +766,7 @@ function listBeat(c: Ctx, id: string, kind: "SPECS" | "CHECKLIST" | "RECAP"): Dr
     maxExtraMs: 1200,
     showsProduct: true,
     sfx: Array.from({ length: n }, (_, i) => ({
-      atMs: 300 + i * (kind === "SPECS" ? 170 : 220),
+      atMs: 300 + i * (kind === "SPECS" ? SPEC_STAGGER_MS : 220),
       kind: "click" as const,
       gainDb: -16,
     })),
@@ -1382,6 +1385,8 @@ function productOrigin(d: Draft): { x: number; y: number } | undefined {
 }
 
 const beatId = (n: number) => `s${String(n).padStart(2, "0")}`;
+
+const SPEC_STAGGER_MS = 420;
 
 /** transitions that blend the outgoing and incoming frames at partial opacity */
 const DISSOLVES = new Set<TransitionType>(["fade", "scale_in"]);

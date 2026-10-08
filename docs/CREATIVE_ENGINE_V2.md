@@ -93,6 +93,19 @@ follow after the Tools + Beauty quality bar is approved.
 Every beat has a camera move (zoom / drift, linear over the beat). It is applied to the _world_ — media, beat
 background and anchored overlays (callouts, rings, particles, light sweeps) — while text, cards, chips, counters
 and lists stay fixed, so motion never costs legibility. Callout, comparison and screen beats keep a still camera.
+Pushes on a cut-out product are centred on the product itself, so it grows in place instead of drifting into the
+headline, a card or the disclosure band.
+
+### Opening frame and transitions
+
+- The first frame doubles as the thumbnail: the opening shot shows the product at once. Entrance motions that
+  start off-screen or transparent (whip-in, drop-in, tilt-in, slide-in) become a `punch_in` there — the product
+  is on screen from frame 0 and settles with a short scale punch.
+- A dissolve (`fade`, `scale_in`) between two product shots shows two half-transparent products at once. Between
+  product beats the director uses a soft-focus `blur`, a hard-edged `mask_wipe`, or a clean cut — never the same
+  transition twice in a row.
+- A hero shot can carry keyframes (`heroAnimate`) so the product does something mid-beat — the drill's trigger,
+  LED work light and chuck spin — instead of floating until the next cut.
 
 ## Style kits (category visual languages)
 
@@ -122,7 +135,12 @@ Text lives inside the area that is safe on TikTok, Instagram Reels and Facebook 
 184 px, above 1364 px (the band down to 1436 px is reserved for the disclosure line), ≥ 72 px from the left edge
 and left of the action rail (x ≤ 924) from y = 700 down. Drawn text bounds are checked against every platform's
 unsafe areas (`checkSafeZones`). Text set over imagery always gets a scrim (`onMedia` white on a dark scrim);
-the disclosure and timers sit on chips.
+the disclosure and timers sit on chips, and the disclosure chip is opaque from the first frame.
+
+The disclosure may never sit on the product: when a plan is resolved, every cut-out product is measured as
+drawn — its own zoom and the beat's camera move at both ends of the beat — and a product that reaches into the
+disclosure chip is a `DISCLOSURE_COLLISION` issue (major). Full-bleed scene artwork is composed so its product
+sits above the content floor (1364 px).
 
 ## Motion renderer (Remotion)
 

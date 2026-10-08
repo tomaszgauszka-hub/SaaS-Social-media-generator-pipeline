@@ -96,7 +96,9 @@ localized pack, every number of the source copy must survive translation. Each u
 
 ## Compliance QA
 
-- Affiliate / sponsored content shows a disclosure for the whole reel.
+- Affiliate / sponsored content shows a disclosure for the whole reel, legible from the first frame (opaque chip).
+- The disclosure never overlaps the product: `DISCLOSURE_COLLISION` is raised at plan time from the product's
+  drawn bounds including media zoom and camera move (deterministic geometry, no frame analysis needed).
 - Placeholder / demo media carries the burned-in DEMO label.
 - No prohibited or absolute claims (cure, guaranteed, risk-free, #1, clinically proven, …).
 - No medical or skin-treatment claims (anti-aging, wrinkles, acne, treatment, …).

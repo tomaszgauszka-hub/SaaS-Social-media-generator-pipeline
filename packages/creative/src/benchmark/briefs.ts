@@ -23,6 +23,21 @@ export const BENCH_TOOLS: CreativeBriefInput = {
     tagline: "2 speeds · 21 clutch settings · LED light",
   },
   heroMedia: "drill",
+  // mid-hero the drill comes alive: trigger pulled, LED work light on, chuck spinning
+  heroAnimate: {
+    trigger: [
+      { atMs: 1500, value: 0 },
+      { atMs: 1700, value: 1 },
+    ],
+    led: [
+      { atMs: 1550, value: 0 },
+      { atMs: 1750, value: 1 },
+    ],
+    spin: [
+      { atMs: 1600, value: 0 },
+      { atMs: 2400, value: 1 },
+    ],
+  },
   media: [demoMedia("drill"), demoMedia("drill_work")],
   hook: {
     text: "Every spec of this *20V drill*, broken down",

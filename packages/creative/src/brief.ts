@@ -108,6 +108,8 @@ export const CreativeBrief = z.object({
   }),
   heroMedia: z.string(),
   heroParams: Params,
+  /** keyframes for the hero shot: the product does something mid-beat (trigger pull, light on, lid opens) */
+  heroAnimate: Animate,
   media: z.array(MediaRef).min(1),
   hook: z.object({ text: z.string(), strategy: z.string(), scene: SceneUse.optional() }),
   problem: SceneUse.optional(),
