@@ -1,0 +1,66 @@
+{
+  "brandId": "homely-finds",
+  "brandName": "Homely Finds",
+  "logo": { "path": "assets/brands/homely-finds/logo.png", "position": "top_left", "widthPx": 230 },
+  "colors": {
+    "primary": "#2B2420",
+    "secondary": "#F4EBDD",
+    "accent": "#E8A33D",
+    "text": "#FFFFFF",
+    "background": "#1C1714"
+  },
+  "fonts": {
+    "display": { "family": "Inter", "file": "assets/fonts/inter/Inter-ExtraBold.otf", "weight": 800 },
+    "body": { "family": "Inter", "file": "assets/fonts/inter/Inter-SemiBold.otf", "weight": 600 },
+    "captions": { "family": "Inter", "file": "assets/fonts/inter/Inter-ExtraBold.otf", "weight": 800 }
+  },
+  "voicePersona": {
+    "id": "homely-warm",
+    "description": "Warm, calm home-decor curator: a friendly expert who shows, never pushes",
+    "style": "warm, calm and confident; conversational commercial read; a smile in the voice",
+    "pace": 1,
+    "gender": "female",
+    "voices": {
+      "google": { "*": "Kore" },
+      "piper": {}
+    }
+  },
+  "captionStyle": {
+    "preset": "word_highlight",
+    "highlightColor": "#E8A33D",
+    "uppercase": false,
+    "maxWordsPerPhrase": 4
+  },
+  "musicStyle": {
+    "genres": ["deep_house", "acoustic_pop", "lofi_house"],
+    "moods": ["warm", "elegant", "calm"],
+    "bpm": [92, 118]
+  },
+  "preferredCTA": {
+    "pl-PL": ["Link w bio"],
+    "en-US": ["Link in bio"],
+    "de-DE": ["Link in der Bio"]
+  },
+  "forbiddenPhrases": [
+    "najlepsza na świecie",
+    "best in the world",
+    "beste der Welt",
+    "gwarantowane",
+    "guaranteed",
+    "garantiert",
+    "darmowa dostawa",
+    "free shipping",
+    "kostenloser Versand"
+  ],
+  "visualStyle": { "environment": "warm_living", "energy": 0.55 },
+  "targetMarkets": [
+    { "market": "PL", "locale": "pl-PL" },
+    { "market": "US", "locale": "en-US" },
+    { "market": "DE", "locale": "de-DE" }
+  ],
+  "disclosure": {
+    "pl-PL": "Reklama · link afiliacyjny",
+    "en-US": "Ad · affiliate link",
+    "de-DE": "Werbung · Affiliate-Link"
+  }
+}
