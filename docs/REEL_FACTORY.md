@@ -75,6 +75,31 @@ costs one audio pass and one video pass instead of a Blender render.
 | budget                                    | max and estimated API cost                                                                                                                         |
 | copy                                      | locale copy (slots + fact ids + transcreation provenance)                                                                                          |
 
+## Directors and copy
+
+- **TemplateDirector** (local, always available) — a per-category shot grammar (lighting: HOOK silhouette reveal
+  with the light switching on → BENEFIT slow turntable → PROOF macro push on the brass / walnut → DESIRE camera
+  slide → CTA hero; tools / kitchen / electronics: impact → turntable demo → detail → feature → CTA; generic
+  grammar otherwise), music from the brand style with an energy curve that follows the sales structure, SFX
+  cues on the sales beats (light switch, whoosh, shimmer, bass hit), copy from the native lexicon.
+- **GeminiDirector** (`GOOGLE_DIRECTOR_MODEL`, then `GOOGLE_DIRECTOR_FALLBACK_MODEL`) — minimal JSON payload
+  (profile, facts by id filtered to the copy language + English, brand / platform essentials, reusable assets,
+  hook history), structured output constrained by the `DirectorDecision` schema, one repair round with the
+  concrete problems, then the next provider.
+- **Native copy lexicon** (`director/lexicon.ts`) — whole sentences per language (pl, en, de, fr, es, it) written
+  as a copywriter would, never assembled word by word. Product claims exist only as _concepts_ that are used when
+  the product's own facts contain them (walnut + brass + fabric, curved brass stem, LED bulb included, easy
+  assembly, mid-century style, room fit …); every line carries the ids of the facts that prove it, preferring
+  the facts written in the copy's language. Slot ids carry the concept id (`voice.2.materials_walnut_brass_fabric`),
+  so **template transcreation** re-writes the same claim natively in another language instead of translating it.
+  Example (lamp, PL / EN / DE): „Orzechowa podstawa, mosiężny trzon i abażur z tkaniny." / "A walnut base, a brass
+  stem and a fabric shade." / „Sockel aus Walnuss, Stange aus Messing, Schirm aus Stoff."
+- **PlanCompiler** — shot boundaries snapped to the music beat grid and to frames, CTA window ≥ the platform
+  minimum, technique per preset (plate / relight / sequence), voice segments on their sales roles, music events
+  (energy changes on cuts, drop after the hook, riser before the CTA, final hit on the CTA downbeat), SFX gains
+  per kind, caption / CTA / logo / disclosure configuration, render profile from the tier. Same input → the
+  same bytes.
+
 ## Sales-first direction
 
 The director composes for conversion, not for spectacle: HOOK → PROBLEM / NEED → BENEFIT → PROOF / FEATURE →
@@ -141,17 +166,55 @@ variants never re-render.
 
 ## ReelComposer (FFmpeg)
 
-Pure argument builders + a no-shell runner. Master pass: concat / trim / transitions / logo → master video.
-Localized pass: music + voice + SFX with automatic ducking under the voice, two-pass loudness normalisation to
-the platform target, burned-in dynamic captions (libass: word highlight, phrase pop, karaoke fill, minimal),
-overlays, CTA, disclosure, H.264 + AAC encode, poster frame.
+Pure argument builders (`composer/master.ts`, `audio.ts`, `subtitles.ts`) + a no-shell runner.
+
+- **Master pass** — clips scaled / cropped to 1080×1920 @ plan fps; a transition into shot _k_ starts exactly at
+  the planned cut and the outgoing shot holds its last frame for the transition length (`tpad`), so
+  `xfade offset = start(k)` and the total is exactly `plan.durationMs` (frame-quantised: 12 s → 360 frames). Cuts
+  are `concat`. The brand logo is overlaid outside every platform UI zone with an alpha fade. Output: H.264 CRF 14,
+  no audio. The master is cached by a **visual hash** (clip file hashes + visual plan fields + logo + composer
+  version — never copy, voice or captions), so every locale and every QA retry that does not touch the visuals
+  reuses it.
+- **Localized pass** — music (trim, fades, gain) with a **deterministic ducking envelope** computed from the
+  voice's word timings (`gain = 10^(−depth·s(t)/20)`, trapezoid attack before each speech region, release after;
+  the music dips _before_ the first syllable instead of reacting to it), voice on the reel timeline, SFX
+  (`adelay`, per-kind gain), `amix normalize=0`, limiter, then **two-pass loudnorm** to the plan's mastering
+  target (platform −14 LUFS; true peak mastered 1.5 dB under the delivery ceiling for AAC overshoot). Video:
+  libass captions (word highlight, phrase pop, karaoke fill with `\kf` per word, minimal lower) and text
+  elements (hook, overlays, CTA headline, CTA button with a pulse, disclosure) on rounded panels, fonts loaded
+  from the brand's files (`fontsdir`), every string sanitised for ASS; H.264 + AAC 48 kHz 192 kbps,
+  `+faststart`, poster frame from the CTA.
+- Measured on synthetic inputs (5 s reel): master pass ≈ 2 s, localized pass ≈ 3 s per locale; ducking verified
+  numerically (the 150 Hz music bed is 8–12 dB lower inside speech), loudness within ±1 LU of target.
+
+## QA and deterministic retry
+
+`qa/run.ts` checks the delivered MP4, not the plan: full decode (integrity), frame count, duration ±1 frame,
+resolution, FPS, codecs, platform duration and file size, EBU R128 loudness and true peak (platform-specific),
+unintended black (fade-through-black windows excluded), long freezes; product visibility per shot from the
+studio's product track (cut / too small / missing, close-up presets exempt); captions and text elements against
+the platform's unsafe zones, reading time and WCAG contrast; CTA present, long enough and at the end; brand
+logo; **affiliate / ad disclosure on screen for the whole reel (blocker if missing)**; voice timing; and colour
+accuracy of the rendered product against the catalog palette. Visual QA runs on 5 representative frames
+(10/30/50/70/90 %): Gemini (low media resolution, fixed rubric, JSON) when the tier and budget allow, otherwise
+local FFmpeg statistics (exposure, flat product region, edge density). Score = 100 − 40 / 12 / 4 per blocker /
+major / minor issue, blended 75/25 with the visual score; passed = no blocker and score ≥ 80.
+
+Fix codes drive `planRetry` (no model): `reframe:<shot>:±fill`, `reposition_captions`, `extend_cta:<ms>` (time
+taken from the previous shot) and `renormalize` (more true-peak headroom). Only what changed is re-rendered
+(Blender shot cache, master cache).
 
 ## Mass production
 
-Jobs run through the existing DB-outbox job system (`reel.produce`): retries with backoff, DLQ, budget
-blocking, idempotency keys, a host-wide Blender resource lock, a process-wide Google request cap, and caches
-for profiles, renders, music, SFX, TTS, captions and translations. Variants of the same product reuse the
-master video and every cached render.
+Jobs run through the existing DB-outbox job system: `pnpm reel … --enqueue` (or `enqueueReelProduction()`)
+writes a `reel.produce` row (idempotency key `reel.produce:<jobId>`), the dispatcher pushes it to the
+`reel_render` BullMQ queue (concurrency = `RENDER_CONCURRENCY`, timeout 1 h, 2 attempts, then the dead-letter
+queue). Product and brand are referenced by paths inside `.data/products` / `assets/brands` only. On top of
+that: a host-wide Blender resource lock, a process-wide Google request cap with Retry-After back-off, per-job
+budget gates, and content-addressed caches for profiles, renders, master videos, music, SFX, TTS, captions and
+translations. Variants of the same product reuse the master video and every cached render. Results land in
+`ReelJobRecord` / `ReelVariant` (plan, manifest and feature columns for later conversion analysis) and the hook
+memory.
 
 ## Security
 
