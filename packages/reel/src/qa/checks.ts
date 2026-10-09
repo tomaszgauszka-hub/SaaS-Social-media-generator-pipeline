@@ -201,13 +201,20 @@ export function productRules(plan: ReelPlan, clips: readonly ShotClip[]): RuleRe
     const visible = Math.min(...rects.map((r) => (area(r) ? area(intersect(r, frame)) / area(r) : 0)));
     const heightShare = Math.min(...rects.map((r) => Math.min(r.h, H) / H));
     const closeup = CLOSEUPS.has(shot.preset) || shot.params.focus === "detail";
+    // a close-up shows part of the product on purpose: it is "missing" only when the product barely covers the frame
+    const coverage = Math.min(...rects.map((r) => area(intersect(r, frame)) / area(frame)));
     const cut = !closeup && visible < 0.9;
     const small = !closeup && heightShare < 0.22;
-    const lost = visible < 0.25;
+    const lost = closeup ? coverage < 0.15 : visible < 0.25;
     out.checks.push({
       id: `product:${shot.id}`,
       passed: !cut && !small && !lost,
-      value: { visible: Number(visible.toFixed(3)), heightShare: Number(heightShare.toFixed(3)), closeup },
+      value: {
+        visible: Number(visible.toFixed(3)),
+        heightShare: Number(heightShare.toFixed(3)),
+        coverage: Number(coverage.toFixed(3)),
+        closeup,
+      },
       note: `${Math.round(visible * 100)} % of the product inside the frame, ${Math.round(heightShare * 100)} % of the height`,
     });
     if (lost)

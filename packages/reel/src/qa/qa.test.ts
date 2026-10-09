@@ -148,6 +148,12 @@ describe("product visibility", () => {
     p.shots[0]!.preset = "macro_push";
     const r = productRules(p, [clip("sh01", { x: -200, y: -100, w: 1500, h: 2200 })]);
     expect(r.issues).toEqual([]);
+    // a macro of a tall product: its whole-product box is mostly outside the frame, but it fills the frame
+    const tall = productRules(p, [clip("sh01", { x: -600, y: -2400, w: 2300, h: 6000 })]);
+    expect(tall.issues).toEqual([]);
+    // a close-up where the product is barely in the frame is still "missing"
+    const off = productRules(p, [clip("sh01", { x: 900, y: 1700, w: 900, h: 900 })]);
+    expect(off.issues[0]?.code).toBe("product_missing");
   });
 
   it("reads normalised or pixel rects and finds the box at a reel time", () => {
