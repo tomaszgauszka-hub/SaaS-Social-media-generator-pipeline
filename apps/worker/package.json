@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit -p .",
     "benchmark": "tsx src/cli/creative-benchmark.ts",
     "reel": "tsx src/cli/reel.ts",
-    "reel:fetch-abo": "tsx src/cli/fetch-abo.ts"
+    "reel:fetch-abo": "tsx src/cli/fetch-abo.ts",
+    "reel:outcome": "tsx src/cli/reel-outcome.ts",
+    "reel:batch": "tsx src/cli/reel-batch.ts"
   },
   "dependencies": {
     "@cre/config": "workspace:*",
@@ -22,6 +24,7 @@
     "@cre/shared": "workspace:*",
     "@cre/creative": "workspace:*",
     "@cre/motion": "workspace:*",
-    "@cre/reel": "workspace:*"
+    "@cre/reel": "workspace:*",
+    "@cre/media": "workspace:*"
   }
 }

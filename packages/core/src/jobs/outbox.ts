@@ -22,6 +22,7 @@ export type JobType =
   | "asset.music"
   | "pipeline.render"
   | "pipeline.qa"
+  | "reel.produce"
   | "publish.publication"
   | "analytics.collect"
   | "analytics.profile"

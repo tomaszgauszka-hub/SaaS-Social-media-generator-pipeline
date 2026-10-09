@@ -20,3 +20,5 @@ export { autoFixScope, mediaChecks, rejectionReasonsFor, QA_AUTO_RETRIES } from 
 export { alignSceneDurations, brandStyle, VOICE_START_MS } from "./steps/render.ts";
 export { normalizeScript, type StoredScript } from "./steps/script.ts";
 export * from "./outbox.ts";
+export * from "./reel-store.ts";
+export { enqueueReelProduction, reelProduceHandler, ReelProducePayload } from "./steps/reel.ts";

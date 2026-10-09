@@ -1,0 +1,30 @@
+{
+  "FAST": {
+    "samples": 12,
+    "sequenceFps": 15,
+    "overscan": 1.18,
+    "scale": 0.5,
+    "plateScale": 0.75,
+    "adaptiveThreshold": 0.04,
+    "denoiseQuality": "BALANCED",
+    "maxBounces": 4,
+    "diffuseBounces": 2,
+    "glossyBounces": 2,
+    "transmissionBounces": 4,
+    "textureLimit": "2048"
+  },
+  "QUALITY": {
+    "samples": 64,
+    "sequenceFps": 30,
+    "overscan": 1.18,
+    "scale": 1,
+    "plateScale": 1,
+    "adaptiveThreshold": 0.015,
+    "denoiseQuality": "HIGH",
+    "maxBounces": 8,
+    "diffuseBounces": 3,
+    "glossyBounces": 4,
+    "transmissionBounces": 8,
+    "textureLimit": "OFF"
+  }
+}

@@ -2,7 +2,7 @@
   "name": "content-revenue-engine",
   "version": "0.1.0",
   "private": true,
-  "description": "Automated multi-brand content \u2192 distribution \u2192 analytics \u2192 revenue optimization engine",
+  "description": "Automated multi-brand content → distribution → analytics → revenue optimization engine",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "engines": {
@@ -35,7 +35,9 @@
     "check": "pnpm typecheck && pnpm lint && pnpm test",
     "creative:benchmark": "pnpm --filter @cre/worker benchmark",
     "reel": "pnpm --filter @cre/worker reel",
-    "reel:fetch-abo": "pnpm --filter @cre/worker reel:fetch-abo"
+    "reel:fetch-abo": "pnpm --filter @cre/worker reel:fetch-abo",
+    "reel:outcome": "pnpm --filter @cre/worker reel:outcome",
+    "reel:batch": "pnpm --filter @cre/worker reel:batch"
   },
   "devDependencies": {
     "@cre/config": "workspace:*",

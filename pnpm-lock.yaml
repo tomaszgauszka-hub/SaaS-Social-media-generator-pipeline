@@ -129,6 +129,9 @@ importers:
       '@cre/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@cre/media':
+        specifier: workspace:*
+        version: link:../../packages/media
       '@cre/motion':
         specifier: workspace:*
         version: link:../../packages/motion
@@ -321,6 +324,9 @@ importers:
       '@cre/publishing':
         specifier: workspace:*
         version: link:../publishing
+      '@cre/reel':
+        specifier: workspace:*
+        version: link:../reel
       '@cre/shared':
         specifier: workspace:*
         version: link:../shared

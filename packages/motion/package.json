@@ -5,7 +5,8 @@
   "description": "Creative Engine V2 renderer: Remotion compositions (local motion graphics) + render driver + audio finishing",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./audio": "./src/audio/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p ."

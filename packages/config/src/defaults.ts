@@ -56,6 +56,8 @@ export const JOB_DEFAULTS: Record<string, { timeoutMs: number; maxAttempts: numb
   "asset.music": { queue: "tts", timeoutMs: 120_000, maxAttempts: 2 },
   "pipeline.render": { queue: "render", timeoutMs: 900_000, maxAttempts: 2 },
   "pipeline.qa": { queue: "qa", timeoutMs: 180_000, maxAttempts: 3 },
+  // sales reel factory: Blender + FFmpeg + audio for every locale of one product (CPU-bound, long)
+  "reel.produce": { queue: "reel_render", timeoutMs: 3_600_000, maxAttempts: 2 },
   "publish.publication": { queue: "publish", timeoutMs: 600_000, maxAttempts: 4 },
   "analytics.collect": { queue: "analytics", timeoutMs: 120_000, maxAttempts: 3 },
   "analytics.profile": { queue: "analytics", timeoutMs: 120_000, maxAttempts: 2 },
@@ -70,6 +72,7 @@ export const QUEUE_NAMES = [
   "video_generation",
   "tts",
   "render",
+  "reel_render",
   "qa",
   "publish",
   "analytics",

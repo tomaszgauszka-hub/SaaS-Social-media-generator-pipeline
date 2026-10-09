@@ -21,6 +21,7 @@
     "@cre/providers": "workspace:*",
     "@cre/publishing": "workspace:*",
     "zod": "4.6.5",
-    "bullmq": "5.81.5"
+    "bullmq": "5.81.5",
+    "@cre/reel": "workspace:*"
   }
 }

@@ -82,7 +82,7 @@ export class BullMqDispatcher {
       const names = this.opts.queues ?? QUEUE_NAMES;
       for (const name of names) {
         const concurrency =
-          name === "render"
+          name === "render" || name === "reel_render"
             ? this.opts.renderConcurrency
             : name === "video_generation"
               ? Math.min(2, this.opts.concurrency)
