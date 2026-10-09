@@ -1,5 +1,6 @@
 import type { GoogleAI } from "@cre/providers";
 import { z } from "zod";
+import { thinkingFor } from "../providers/google/common.ts";
 import type { CallContext, ProductAnalyzer } from "../capabilities/types.ts";
 import { ProductProfile, type ProductSource } from "../contracts/product.ts";
 import { catalogPalette, categoryOf, sourceHash } from "./deterministic.ts";
@@ -69,7 +70,7 @@ export class GeminiProductAnalyzer implements ProductAnalyzer {
         ...photos.map((p) => ({ file: p.path, mimeType: "image/jpeg" })),
       ],
       jsonSchema: z.toJSONSchema(AnalyzerAnswer),
-      thinkingLevel: "minimal",
+      thinkingLevel: thinkingFor(this.model),
       mediaResolution: "low",
       maxOutputTokens: 1200,
       timeoutMs: 60_000,

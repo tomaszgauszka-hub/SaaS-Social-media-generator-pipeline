@@ -1,5 +1,6 @@
 import type { GoogleAI } from "@cre/providers";
 import { z } from "zod";
+import { thinkingFor } from "../providers/google/common.ts";
 import type {
   CallContext,
   VisualQaProvider,
@@ -71,7 +72,7 @@ export class GeminiVisualQaProvider implements VisualQaProvider {
         ...req.frames.map((f) => ({ file: f.path, mimeType: "image/jpeg" })),
       ],
       jsonSchema: z.toJSONSchema(VisualQaAnswer),
-      thinkingLevel: "minimal",
+      thinkingLevel: thinkingFor(this.model),
       mediaResolution: "low",
       maxOutputTokens: 400,
       timeoutMs: 60_000,

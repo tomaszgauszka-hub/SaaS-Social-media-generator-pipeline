@@ -2,7 +2,7 @@ import type { GoogleAI } from "@cre/providers";
 import { z } from "zod";
 import type { CallContext, TranscreationProvider, TranscreationRequest } from "../capabilities/types.ts";
 import { LocaleCopy, type CopySlot } from "../contracts/plan.ts";
-import { recordCall, recordFailure } from "../providers/google/common.ts";
+import { recordCall, recordFailure, thinkingFor } from "../providers/google/common.ts";
 
 /**
  * Gemini transcreation: ONE call adapts the master copy to every target market (marketing adaptation, not
@@ -82,7 +82,7 @@ export class GeminiTranscreation implements TranscreationProvider {
         system: SYSTEM,
         parts: [{ text: payload }],
         jsonSchema: z.toJSONSchema(Answer),
-        thinkingLevel: "minimal",
+        thinkingLevel: thinkingFor(this.model),
         maxOutputTokens: 2500,
         timeoutMs: 45_000,
         label: "reel.transcreation",

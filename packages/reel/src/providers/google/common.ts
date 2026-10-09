@@ -220,3 +220,8 @@ export function promptSafe(text: string, max: number): string {
     .trim()
     .slice(0, max);
 }
+
+/** "minimal" thinking only where the model accepts it (Flash-Lite); full Flash models error on it → "low". */
+export function thinkingFor(model: string): "minimal" | "low" {
+  return /flash-lite/i.test(model) ? "minimal" : "low";
+}

@@ -2,7 +2,7 @@ import type { GoogleAI } from "@cre/providers";
 import { z } from "zod";
 import type { CallContext, DirectorInput, DirectorProvider } from "../capabilities/types.ts";
 import { DirectorDecision } from "../contracts/plan.ts";
-import { recordCall, recordFailure } from "../providers/google/common.ts";
+import { recordCall, recordFailure, thinkingFor } from "../providers/google/common.ts";
 
 /**
  * Gemini director: a cheap multimodal Flash(-Lite) model decides WHAT the reel is — hook, sales structure, shot
@@ -129,7 +129,7 @@ export class GeminiDirector implements DirectorProvider {
           system: SYSTEM,
           parts: [{ text: payload }, ...(feedback ? [{ text: feedback }] : [])],
           jsonSchema: schema,
-          thinkingLevel: "minimal",
+          thinkingLevel: thinkingFor(this.model),
           maxOutputTokens: 1600,
           timeoutMs: 45_000,
           label: "reel.director",
