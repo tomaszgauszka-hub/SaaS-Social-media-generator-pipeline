@@ -218,3 +218,39 @@ export class HookMemory {
       .sort((a, b) => b.score - a.score);
   }
 }
+
+/* ---------------------------------------------------------------- cheap A/B ---------------------- */
+
+const ensureStop = (s: string) => (/[.!?…]$/.test(s) ? s : `${s}.`);
+
+/**
+ * A/B arm without a new render: the same plan (shots, music, SFX, timing) with another hook strategy — only the
+ * on-screen hook and the spoken hook line change, so the arm reuses the master video and the audio bed.
+ * Returns null when the strategy cannot be supported by the product's facts.
+ */
+export function rehookPlan<
+  P extends {
+    metadata: { planId: string; variantKey: string; seed: string; hookStrategy: HookStrategy };
+    language: string;
+    copy: { locale: string; slots: Record<string, { kind: string; text: string; factIds: string[] }> };
+  },
+>(plan: P, strategy: HookStrategy, variantKey: string, c: HookContext): P | null {
+  if (!hookApplicable(strategy, c).ok) return null;
+  const h = hookLine(strategy, plan.copy.locale, c);
+  const slots = { ...plan.copy.slots };
+  if (slots.hook) slots.hook = { ...slots.hook, text: h.text, factIds: h.factIds };
+  for (const id of Object.keys(slots))
+    if (/^voice\.\d+\.hook$/.test(id))
+      slots[id] = { ...slots[id]!, text: ensureStop(h.text), factIds: h.factIds };
+  return {
+    ...plan,
+    metadata: {
+      ...plan.metadata,
+      planId: plan.metadata.planId.replace(/-[A-Z]$/, `-${variantKey}`),
+      variantKey,
+      seed: plan.metadata.seed.replace(/:[A-Z]$/, `:${variantKey}`),
+      hookStrategy: strategy,
+    },
+    copy: { ...plan.copy, slots },
+  };
+}

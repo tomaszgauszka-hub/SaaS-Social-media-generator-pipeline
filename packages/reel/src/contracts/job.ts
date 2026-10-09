@@ -24,6 +24,25 @@ export const ReelJob = z.object({
   forceProviders: z.partialRecord(Capability, z.string()).default({}),
   /** opt-in only: allow generative video for special shots (still capped by tier + budget) */
   allowGenerativeVideo: z.boolean().default(false),
+  /**
+   * more platforms from the same master and audio (logo, text layout, captions and QA per platform) — one
+   * Blender render, several distribution channels
+   */
+  extraPlatforms: z.array(PlatformId).max(3).default([]),
+  /**
+   * A/B arms: "copy" (default) re-hooks the arm-A plan — same master video, music and SFX, only the hook copy /
+   * voice changes (≈ free); "full" asks the director again for each arm (new shots → new renders)
+   */
+  abMode: z.enum(["copy", "full"]).default("copy"),
+  /** affiliate economics for the payback estimate (never shown in the reel) */
+  economics: z
+    .object({
+      /** commission share of the sale price (0..1) */
+      commissionRate: z.number().min(0).max(1).optional(),
+      /** or a fixed commission per sale (USD) */
+      commissionUsd: z.number().min(0).optional(),
+    })
+    .default({}),
 });
 export type ReelJob = z.infer<typeof ReelJob>;
 export type ReelJobInput = z.input<typeof ReelJob>;

@@ -122,6 +122,8 @@ export const EnvSchema = z.object({
   PIPER_BIN: z.string().default(".tools/piper/piper/piper"),
   PIPER_VOICES_DIR: z.string().default(".tools/piper/voices"),
   REEL_CACHE_DIR: z.string().default(".data/reel-cache"),
+  /** compute price of the render host (USD per wall-clock hour) — cost per reel / payback reports */
+  REEL_COMPUTE_USD_PER_HOUR: z.coerce.number().min(0).default(0.15),
   REEL_OUTPUT_DIR: z.string().default(".data/reels"),
 });
 
