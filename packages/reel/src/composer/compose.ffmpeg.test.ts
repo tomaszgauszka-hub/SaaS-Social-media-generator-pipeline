@@ -148,7 +148,6 @@ describe.skipIf(!hasFfmpeg)("ReelComposer end to end (synthetic inputs)", () => 
     const master = await composeMaster({
       plan,
       clips,
-      logo: brandLogo,
       outPath: path.join(dir, "A.master.mp4"),
       workDir: dir,
       cacheDir,
@@ -157,7 +156,6 @@ describe.skipIf(!hasFfmpeg)("ReelComposer end to end (synthetic inputs)", () => 
     const again = await composeMaster({
       plan,
       clips,
-      logo: brandLogo,
       outPath: path.join(dir, "A.master2.mp4"),
       workDir: dir,
       cacheDir,
@@ -269,6 +267,8 @@ describe.skipIf(!hasFfmpeg)("ReelComposer end to end (synthetic inputs)", () => 
         ],
         captions,
         texts,
+        platform,
+        logo: brandLogo,
         outPath: path.join(dir, `${locale}.mp4`),
         posterPath: path.join(dir, `${locale}.jpg`),
         workDir: dir,
@@ -294,6 +294,28 @@ describe.skipIf(!hasFfmpeg)("ReelComposer end to end (synthetic inputs)", () => 
       const inside = await rmsDb(out.audioPath, musicOnly, 1.15, 1.45); // before the 1.5 s whoosh
       expect(outside - inside).toBeGreaterThan(8);
       expect(outside - inside).toBeLessThan(12);
+
+      // the same locale for another platform: same master, same audio, logo placed for that platform's UI
+      if (locale === "pl-PL") {
+        const yt = await composeLocalized({
+          plan: { ...p, platform: "youtube_shorts" },
+          masterPath: master.path,
+          sfx: [],
+          captions,
+          texts,
+          platform: PLATFORM_PROFILES.youtube_shorts,
+          logo: brandLogo,
+          reuseAudio: { path: out.audioPath, lufs: out.audio.lufs, truePeakDb: out.audio.truePeakDb },
+          outPath: path.join(dir, `${locale}.youtube_shorts.mp4`),
+          posterPath: path.join(dir, `${locale}.youtube_shorts.jpg`),
+          workDir: dir,
+        });
+        expect(yt.audioReused).toBe(true);
+        expect(yt.audioMs).toBeLessThan(out.audioMs);
+        expect(yt.logoBox).toBeDefined();
+        const yi = await probeMedia(yt.path);
+        expect([yi.width, yi.height, yi.hasAudio]).toEqual([1080, 1920, true]);
+      }
     }
   }, 180_000);
 });

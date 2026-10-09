@@ -3,7 +3,7 @@ import { PLATFORM_PROFILES } from "../contracts/profiles.ts";
 import { testPlan } from "../testing/fixtures.ts";
 import { buildMixArgs, duckingExpression, duckingGainDb, loudnormTarget, speechRegions } from "./audio.ts";
 import { buildLocalizedVideoArgs } from "./compose.ts";
-import { buildMasterArgs, logoRect } from "./master.ts";
+import { buildMasterArgs, logoOverlay, logoRect } from "./master.ts";
 import {
   assLines,
   captionEvents,
@@ -45,13 +45,7 @@ describe("master args", () => {
   const logo = { path: "/l.png", width: 620, height: 150, widthPx: 230, position: "top_left" as const };
 
   it("chains concat for cuts and xfade at the exact cut offsets, frame-exact length", () => {
-    const { args, frameCount, logoBox } = buildMasterArgs({
-      plan,
-      clips,
-      platform: tiktok,
-      logo,
-      outPath: "/o.mp4",
-    });
+    const { args, frameCount } = buildMasterArgs({ plan, clips, outPath: "/o.mp4" });
     const graph = args[args.indexOf("-filter_complex") + 1]!;
     expect(frameCount).toBe(150);
     // shot 1 holds 12 frames (400 ms) for the fade, shot 2 holds 9 (300 ms) for the slide
@@ -60,25 +54,60 @@ describe("master args", () => {
     expect(graph).toContain("trim=end_frame=45,");
     expect(graph).toContain("xfade=transition=fade:duration=0.4000:offset=1.5000");
     expect(graph).toContain("xfade=transition=slideup:duration=0.3000:offset=3.5000");
-    expect(graph).toContain("overlay=x=48:y=164:enable='between(t,0.000,5.000)'");
     expect(args.slice(args.indexOf("-frames:v"), args.indexOf("-frames:v") + 2)).toEqual([
       "-frames:v",
       "150",
     ]);
-    expect(logoBox).toEqual({ x: 48, y: 164, w: 230, h: 56 });
+    expect(graph).not.toContain("overlay"); // the master is brand- and platform-free
+  });
+
+  it("builds the per-platform logo overlay outside the platform UI", () => {
+    const o = logoOverlay({
+      logo,
+      window: { startMs: 0, endMs: 5000 },
+      platform: tiktok,
+      fps: 30,
+      durationMs: 5000,
+      inputIndex: 2,
+      inLabel: "0:v",
+      outLabel: "lg",
+    });
+    expect(o.box).toEqual({ x: 48, y: 164, w: 230, h: 56 });
+    expect(o.inputArgs).toEqual(["-loop", "1", "-framerate", "30", "-t", "6.000", "-i", "/l.png"]);
+    expect(o.graph[1]).toBe(
+      "[0:v][logo]overlay=x=48:y=164:enable='between(t,0.000,5.000)':eof_action=pass[lg]",
+    );
+    const ytp = PLATFORM_PROFILES.youtube_shorts;
+    const yt = logoOverlay({
+      logo,
+      window: { startMs: 0, endMs: 5000 },
+      platform: ytp,
+      fps: 30,
+      durationMs: 5000,
+      inputIndex: 2,
+      inLabel: "0:v",
+      outLabel: "lg",
+    });
+    for (const u of ytp.unsafe) {
+      const r = yt.box;
+      const overlap =
+        r.x < u.rect.x + u.rect.w &&
+        r.x + r.w > u.rect.x &&
+        r.y < u.rect.y + u.rect.h &&
+        r.y + r.h > u.rect.y;
+      expect(overlap, `youtube logo vs ${u.name}`).toBe(false);
+    }
   });
 
   it("uses concat when a transition is shorter than two frames", () => {
     const p = testPlan();
     p.shots[1]!.transitionIn = { type: "fade", ms: 30 };
-    const graph = buildMasterArgs({ plan: p, clips, platform: tiktok, outPath: "/o.mp4" }).args.join(" ");
+    const graph = buildMasterArgs({ plan: p, clips, outPath: "/o.mp4" }).args.join(" ");
     expect(graph).toContain("[s0][s1]concat=n=2:v=1:a=0[x1]");
   });
 
   it("refuses a missing clip", () => {
-    expect(() => buildMasterArgs({ plan, clips: clips.slice(1), platform: tiktok, outPath: "/o" })).toThrow(
-      /sh01/,
-    );
+    expect(() => buildMasterArgs({ plan, clips: clips.slice(1), outPath: "/o" })).toThrow(/sh01/);
   });
 
   it("places logos outside the platform UI", () => {

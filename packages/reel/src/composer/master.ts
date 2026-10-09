@@ -4,8 +4,9 @@ import type { PlatformProfile, Rect } from "../contracts/profiles.ts";
 import { assertContiguous, shotWindows } from "./timeline.ts";
 
 /**
- * Master pass (language-free): shot clips → one 1080×1920 @ plan.fps video with the planned transitions and the
- * brand logo. No text, no audio — every locale and A/B copy of the same visual plan reuses this file.
+ * Master pass (language-, platform- and brand-free): shot clips → one 1080×1920 @ plan.fps video with the planned
+ * transitions. No text, no logo, no audio — every locale, every platform, every A/B copy and even other brand
+ * channels selling the same product reuse this file. The logo is placed per platform in the localized pass.
  */
 
 export interface LogoInput {
@@ -54,7 +55,46 @@ const fsec = (f: number, fps: number) => (f / fps).toFixed(4);
 export interface MasterArgs {
   args: string[];
   frameCount: number;
-  logoBox?: Rect;
+}
+
+/**
+ * Pure: logo overlay for one platform pass — an extra looped-image input plus filter steps that put the PNG
+ * (alpha, scaled to `widthPx`) outside the platform's UI zones with a short alpha fade over the logo window.
+ */
+export function logoOverlay(o: {
+  logo: LogoInput;
+  window: { startMs: number; endMs: number };
+  platform: PlatformProfile;
+  fps: number;
+  durationMs: number;
+  inputIndex: number;
+  inLabel: string;
+  outLabel: string;
+}): { inputArgs: string[]; graph: string[]; box: Rect } {
+  const lw = Math.round(o.logo.widthPx / 2) * 2;
+  const lh = Math.round(((o.logo.height / o.logo.width) * lw) / 2) * 2;
+  const box = logoRect(o.logo.position, o.platform, lw, lh);
+  const s = Math.max(0, o.window.startMs) / 1000;
+  const e = Math.min(o.durationMs, o.window.endMs) / 1000;
+  const fade = Math.min(0.3, (e - s) / 4);
+  return {
+    inputArgs: [
+      "-loop",
+      "1",
+      "-framerate",
+      String(o.fps),
+      "-t",
+      ((o.durationMs + 1000) / 1000).toFixed(3),
+      "-i",
+      o.logo.path,
+    ],
+    graph: [
+      `[${o.inputIndex}:v]format=rgba,scale=${lw}:${lh}:flags=lanczos,` +
+        `fade=t=in:st=${s.toFixed(3)}:d=${fade.toFixed(3)}:alpha=1,fade=t=out:st=${(e - fade).toFixed(3)}:d=${fade.toFixed(3)}:alpha=1[logo]`,
+      `[${o.inLabel}][logo]overlay=x=${Math.round(box.x)}:y=${Math.round(box.y)}:enable='between(t,${s.toFixed(3)},${e.toFixed(3)})':eof_action=pass[${o.outLabel}]`,
+    ],
+    box,
+  };
 }
 
 /**
@@ -62,14 +102,12 @@ export interface MasterArgs {
  * round(durationMs · fps / 1000) frames and every cut lands on the planned frame.
  */
 export function buildMasterArgs(opts: {
-  plan: Pick<ReelPlan, "shots" | "durationMs" | "fps" | "resolution" | "branding">;
+  plan: Pick<ReelPlan, "shots" | "durationMs" | "fps" | "resolution">;
   clips: readonly Pick<ShotClip, "shotId" | "path">[];
-  platform: PlatformProfile;
-  logo?: LogoInput;
   outPath: string;
   crf?: number;
 }): MasterArgs {
-  const { plan, clips, platform } = opts;
+  const { plan, clips } = opts;
   const { width: W, height: H } = plan.resolution;
   const fps = plan.fps;
   const windows = shotWindows(plan.shots);
@@ -109,26 +147,6 @@ export function buildMasterArgs(opts: {
     acc = out;
   });
 
-  let logoBox: Rect | undefined;
-  const logoWin = plan.branding.logo;
-  if (opts.logo && logoWin.enabled && logoWin.endMs > logoWin.startMs) {
-    const li = windows.length;
-    const lw = Math.round(opts.logo.widthPx / 2) * 2;
-    const lh = Math.round((opts.logo.height / opts.logo.width) * lw);
-    logoBox = logoRect(logoWin.position, platform, lw, lh);
-    const s = Math.max(0, logoWin.startMs) / 1000;
-    const e = Math.min(plan.durationMs, logoWin.endMs) / 1000;
-    const fade = Math.min(0.3, (e - s) / 4);
-    args.push("-loop", "1", "-framerate", String(fps), "-t", fsec(total + 1, fps), "-i", opts.logo.path);
-    graph.push(
-      `[${li}:v]format=rgba,scale=${lw}:${lh}:flags=lanczos,` +
-        `fade=t=in:st=${s.toFixed(3)}:d=${fade.toFixed(3)}:alpha=1,fade=t=out:st=${(e - fade).toFixed(3)}:d=${fade.toFixed(3)}:alpha=1[logo]`,
-    );
-    graph.push(
-      `[${acc}][logo]overlay=x=${Math.round(logoBox.x)}:y=${Math.round(logoBox.y)}:enable='between(t,${s.toFixed(3)},${e.toFixed(3)})':eof_action=pass[lg]`,
-    );
-    acc = "lg";
-  }
   graph.push(`[${acc}]format=yuv420p,setsar=1[vout]`);
 
   args.push(
@@ -155,5 +173,5 @@ export function buildMasterArgs(opts: {
     "+faststart",
     opts.outPath,
   );
-  return { args, frameCount: total, ...(logoBox ? { logoBox } : {}) };
+  return { args, frameCount: total };
 }

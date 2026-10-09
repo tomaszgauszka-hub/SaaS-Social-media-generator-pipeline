@@ -14,7 +14,7 @@ import type {
   VoiceTrack,
 } from "../contracts/media.ts";
 import type { ReelPlan } from "../contracts/plan.ts";
-import { PLATFORM_PROFILES, type BrandProfile, type Rect } from "../contracts/profiles.ts";
+import type { BrandProfile, PlatformProfile, Rect } from "../contracts/profiles.ts";
 import { FileCache, fileSha256 } from "../util/cache.ts";
 import {
   buildLoudnessApplyArgs,
@@ -23,7 +23,7 @@ import {
   loudnormTarget,
   parseLoudnormJson,
 } from "./audio.ts";
-import { buildMasterArgs } from "./master.ts";
+import { buildMasterArgs, logoOverlay } from "./master.ts";
 import { buildReelAss } from "./subtitles.ts";
 
 /**
@@ -73,10 +73,9 @@ async function prepareFonts(dir: string, files: readonly string[]): Promise<stri
 export interface ComposeMasterInput {
   plan: ReelPlan;
   clips: readonly ShotClip[];
-  logo?: BrandProfile["logo"];
   outPath: string;
   workDir: string;
-  /** master videos are cached here by visualHash (multilingual + retry reuse) */
+  /** master videos are cached here by visualHash (multilingual, multi-platform, A/B and retry reuse) */
   cacheDir?: string;
   tracker?: CostRecorder;
   scope?: string;
@@ -87,16 +86,13 @@ export interface MasterVideo {
   path: string;
   durationMs: number;
   frameCount: number;
-  /** hash of everything that affects the pixels (never copy / voice / captions) */
+  /** hash of everything that affects the pixels (never copy, voice, captions, logo or platform) */
   visualHash: string;
   ffmpegMs: number;
   reused: boolean;
-  logoBox?: Rect;
 }
 
-export async function masterVisualHash(
-  input: Pick<ComposeMasterInput, "plan" | "clips" | "logo">,
-): Promise<string> {
+export async function masterVisualHash(input: Pick<ComposeMasterInput, "plan" | "clips">): Promise<string> {
   const { plan } = input;
   const clips = await Promise.all(
     input.clips.map(async (c) => ({ shotId: c.shotId, sha: await fileSha256(c.path) })),
@@ -104,14 +100,16 @@ export async function masterVisualHash(
   return sha256Hex(
     stableStringify({
       v: COMPOSER_VERSION,
-      shots: plan.shots.map(({ overlaySlot: _o, ...visual }) => visual),
+      // only what reaches the pixels: timing, transitions and the clips (overlay slots are copy)
+      shots: plan.shots.map((s) => ({
+        id: s.id,
+        startMs: s.startMs,
+        durationMs: s.durationMs,
+        transitionIn: s.transitionIn,
+      })),
       resolution: plan.resolution,
       fps: plan.fps,
       durationMs: plan.durationMs,
-      platform: plan.platform,
-      logo: input.logo
-        ? { window: plan.branding.logo, widthPx: input.logo.widthPx, sha: await fileSha256(input.logo.path) }
-        : null,
       clips,
     }),
   ).slice(0, 40);
@@ -120,38 +118,12 @@ export async function masterVisualHash(
 export async function composeMaster(input: ComposeMasterInput): Promise<MasterVideo> {
   const t0 = Date.now();
   const { plan } = input;
-  const platform = PLATFORM_PROFILES[plan.platform];
   const visualHash = await masterVisualHash(input);
-  let logo: Parameters<typeof buildMasterArgs>[0]["logo"];
-  if (input.logo && plan.branding.logo.enabled) {
-    const info = await probeMedia(input.logo.path);
-    if (!info.width || !info.height) throw new Error(`logo ${input.logo.path} has no size`);
-    logo = {
-      path: input.logo.path,
-      width: info.width,
-      height: info.height,
-      widthPx: input.logo.widthPx,
-      position: input.logo.position,
-    };
-  }
   const render = async (out: string) => {
-    const built = buildMasterArgs({
-      plan,
-      clips: input.clips,
-      platform,
-      ...(logo ? { logo } : {}),
-      outPath: out,
-    });
+    const built = buildMasterArgs({ plan, clips: input.clips, outPath: out });
     await runFfmpeg(built.args, input.signal ? { signal: input.signal } : {});
-    return built;
   };
-  const built = buildMasterArgs({
-    plan,
-    clips: input.clips,
-    platform,
-    ...(logo ? { logo } : {}),
-    outPath: input.outPath,
-  });
+  const { frameCount } = buildMasterArgs({ plan, clips: input.clips, outPath: input.outPath });
   await fsp.mkdir(path.dirname(input.outPath), { recursive: true });
   let reused = false;
   if (input.cacheDir) {
@@ -159,9 +131,7 @@ export async function composeMaster(input: ComposeMasterInput): Promise<MasterVi
       "master",
       visualHash,
       "master.mp4",
-      async (tmp) => {
-        await render(tmp);
-      },
+      render,
     );
     reused = cached.hit;
     if (path.resolve(cached.path) !== path.resolve(input.outPath))
@@ -174,18 +144,17 @@ export async function composeMaster(input: ComposeMasterInput): Promise<MasterVi
     stage: "ffmpeg",
     label: `master ${plan.metadata.variantKey}`,
     wallMs: ffmpegMs,
-    frames: built.frameCount,
+    frames: frameCount,
     cached: reused,
     scope: input.scope ?? "master",
   });
   return {
     path: input.outPath,
-    durationMs: Math.round((built.frameCount * 1000) / plan.fps),
-    frameCount: built.frameCount,
+    durationMs: Math.round((frameCount * 1000) / plan.fps),
+    frameCount,
     visualHash,
     ffmpegMs,
     reused,
-    ...(built.logoBox ? { logoBox: built.logoBox } : {}),
   };
 }
 
@@ -199,6 +168,12 @@ export interface ComposeLocalizedInput {
   sfx: readonly SfxCueFile[];
   captions?: CaptionTrack;
   texts: readonly TextElement[];
+  /** the platform this pass delivers for (logo placement; the layout / captions were built for it) */
+  platform: PlatformProfile;
+  /** brand logo, placed per platform outside its UI zones */
+  logo?: BrandProfile["logo"];
+  /** reuse the normalised audio of an earlier pass (same plan audio, another platform) */
+  reuseAudio?: { path: string; lufs: number; truePeakDb: number };
   outPath: string;
   posterPath: string;
   workDir: string;
@@ -221,6 +196,21 @@ export interface LocalizedVideo {
   /** loudness of the normalised mix (before AAC) */
   audio: { lufs: number; truePeakDb: number; normalised: boolean };
   duckExpr: string | null;
+  audioReused: boolean;
+  logoBox?: Rect;
+}
+
+const logoSizes = new Map<string, { width: number; height: number }>();
+
+async function logoSize(file: string): Promise<{ width: number; height: number }> {
+  let s = logoSizes.get(file);
+  if (!s) {
+    const info = await probeMedia(file);
+    if (!info.width || !info.height) throw new Error(`logo ${file} has no size`);
+    s = { width: info.width, height: info.height };
+    logoSizes.set(file, s);
+  }
+  return s;
 }
 
 export async function composeLocalized(input: ComposeLocalizedInput): Promise<LocalizedVideo> {
@@ -228,14 +218,17 @@ export async function composeLocalized(input: ComposeLocalizedInput): Promise<Lo
   const { plan } = input;
   const run = (args: string[], logLevel?: "info") =>
     runFfmpeg(args, { ...(input.signal ? { signal: input.signal } : {}), ...(logLevel ? { logLevel } : {}) });
-  const tag = `${plan.metadata.variantKey}-${plan.language}`.replace(/[^A-Za-z0-9_-]/g, "_");
+  const tag = `${plan.metadata.variantKey}-${plan.language}-${input.platform.id}`.replace(
+    /[^A-Za-z0-9_-]/g,
+    "_",
+  );
   const dir = path.join(input.workDir, `compose-${tag}`);
   await fsp.rm(dir, { recursive: true, force: true });
   await fsp.mkdir(dir, { recursive: true });
 
-  // 1. audio: mix → two-pass loudness to the platform target
+  // 1. audio: mix → two-pass loudness to the plan's target (or reuse the identical audio of another platform)
   const mixWav = path.join(dir, "mix.wav");
-  const finalWav = path.join(dir, "audio.wav");
+  const finalWav = input.reuseAudio?.path ?? path.join(dir, "audio.wav");
   const mix = buildMixArgs({
     durationMs: plan.durationMs,
     ...(input.music ? { music: input.music } : {}),
@@ -245,25 +238,34 @@ export async function composeLocalized(input: ComposeLocalizedInput): Promise<Lo
     sfx: input.sfx,
     outWav: mixWav,
   });
-  await run(mix.args);
-  // the plan's mastering target (from the platform; a QA retry may lower the true-peak ceiling)
-  const target = loudnormTarget({
-    lufs: plan.render_profile.audio.lufs,
-    truePeakDb: plan.render_profile.audio.truePeakDb,
-  });
   let audio: LocalizedVideo["audio"];
-  try {
-    const measured = parseLoudnormJson((await run(buildLoudnessMeasureArgs(mixWav, target), "info")).stderr);
-    const applied = await run(
-      buildLoudnessApplyArgs(mixWav, finalWav, target, measured, plan.durationMs),
-      "info",
-    );
-    const out = parseLoudnormJson(applied.stderr);
-    audio = { lufs: Number(out.output_i), truePeakDb: Number(out.output_tp), normalised: true };
-  } catch {
-    // silent mix (no sources) — nothing to normalise
-    await run(["-i", mixWav, "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", finalWav]);
-    audio = { lufs: -70, truePeakDb: -70, normalised: false };
+  if (input.reuseAudio) {
+    audio = { lufs: input.reuseAudio.lufs, truePeakDb: input.reuseAudio.truePeakDb, normalised: true };
+  } else {
+    audio = await masterAudio();
+  }
+  async function masterAudio(): Promise<LocalizedVideo["audio"]> {
+    await run(mix.args);
+    // the plan's mastering target (from the platform; a QA retry may lower the true-peak ceiling)
+    const target = loudnormTarget({
+      lufs: plan.render_profile.audio.lufs,
+      truePeakDb: plan.render_profile.audio.truePeakDb,
+    });
+    try {
+      const measured = parseLoudnormJson(
+        (await run(buildLoudnessMeasureArgs(mixWav, target), "info")).stderr,
+      );
+      const applied = await run(
+        buildLoudnessApplyArgs(mixWav, finalWav, target, measured, plan.durationMs),
+        "info",
+      );
+      const out = parseLoudnormJson(applied.stderr);
+      return { lufs: Number(out.output_i), truePeakDb: Number(out.output_tp), normalised: true };
+    } catch {
+      // silent mix (no sources) — nothing to normalise
+      await run(["-i", mixWav, "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", finalWav]);
+      return { lufs: -70, truePeakDb: -70, normalised: false };
+    }
   }
   const audioMs = Date.now() - t0;
 
@@ -289,8 +291,23 @@ export async function composeLocalized(input: ComposeLocalizedInput): Promise<Lo
   );
   const frameCount = Math.round((plan.durationMs * plan.fps) / 1000);
   await fsp.mkdir(path.dirname(input.outPath), { recursive: true });
+  const logoWin = plan.branding.logo;
+  const logo =
+    input.logo && logoWin.enabled && logoWin.endMs > logoWin.startMs
+      ? logoOverlay({
+          logo: { ...input.logo, ...(await logoSize(input.logo.path)), position: logoWin.position },
+          window: logoWin,
+          platform: input.platform,
+          fps: plan.fps,
+          durationMs: plan.durationMs,
+          inputIndex: 2,
+          inLabel: "0:v",
+          outLabel: "lg",
+        })
+      : undefined;
   await runFfmpeg(
     buildLocalizedVideoArgs({
+      ...(logo ? { logo } : {}),
       masterPath: input.masterPath,
       audioPath: finalWav,
       assFile: "captions.ass",
@@ -334,7 +351,9 @@ export async function composeLocalized(input: ComposeLocalizedInput): Promise<Lo
     audioMs,
     videoMs,
     audio,
-    duckExpr: mix.duckExpr,
+    duckExpr: input.reuseAudio ? null : mix.duckExpr,
+    audioReused: Boolean(input.reuseAudio),
+    ...(logo ? { logoBox: logo.box } : {}),
   };
 }
 
@@ -349,16 +368,20 @@ export function buildLocalizedVideoArgs(o: {
   crf: number;
   preset: string;
   outPath: string;
+  /** logo overlay built by logoOverlay() with inputIndex 2, inLabel "0:v", outLabel "lg" */
+  logo?: { inputArgs: string[]; graph: string[] };
 }): string[] {
   for (const p of [o.assFile, o.fontsDir])
     if (!/^[A-Za-z0-9._-]+$/.test(p)) throw new Error(`unsafe filter path ${p}`);
+  const subs = `ass=filename=${o.assFile}:fontsdir=${o.fontsDir},format=yuv420p[v]`;
   return [
     "-i",
     o.masterPath,
     "-i",
     o.audioPath,
+    ...(o.logo ? o.logo.inputArgs : []),
     "-filter_complex",
-    `[0:v]ass=filename=${o.assFile}:fontsdir=${o.fontsDir},format=yuv420p[v]`,
+    o.logo ? `${o.logo.graph.join(";")};[lg]${subs}` : `[0:v]${subs}`,
     "-map",
     "[v]",
     "-map",

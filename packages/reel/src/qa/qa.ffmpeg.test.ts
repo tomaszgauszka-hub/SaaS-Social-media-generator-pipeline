@@ -156,6 +156,7 @@ describe.skipIf(!hasFfmpeg)("runReelQa on real files", () => {
       },
       sfx: [],
       texts,
+      platform,
       outPath: path.join(dir, "good.mp4"),
       posterPath: path.join(dir, "good.jpg"),
       workDir: dir,
