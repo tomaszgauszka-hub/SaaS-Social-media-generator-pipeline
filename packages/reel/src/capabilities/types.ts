@@ -106,6 +106,10 @@ export interface TranscreationRequest {
   brand: Pick<BrandProfile, "brandName" | "forbiddenPhrases" | "preferredCTA" | "disclosure">;
   /** max characters per slot (on-screen fit) */
   limits: Record<string, number>;
+  /** the master's hook strategy (template transcreation re-writes the hook natively) */
+  hookStrategy?: string;
+  /** full facts (template transcreation picks the facts written in the target language) */
+  sourceFacts?: ProductSource["facts"];
 }
 
 export interface TranscreationProvider extends ProviderBase {

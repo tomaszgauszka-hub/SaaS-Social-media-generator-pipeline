@@ -34,3 +34,7 @@ tmp/
 
 # local tool installs (Blender bpy venv, Piper TTS binary + voices) — see tools/README.md
 .tools/
+
+# python bytecode (Blender studio)
+__pycache__/
+*.pyc
