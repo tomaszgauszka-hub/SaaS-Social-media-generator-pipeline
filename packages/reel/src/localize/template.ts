@@ -70,7 +70,7 @@ export function transcreateSlots(
         else if ((tag === "desire" || tag === "value") && s.factIds.length === 0)
           slots[id] = {
             kind: s.kind,
-            text: DESIRE[category === "lighting" ? "lighting" : "generic"][lang],
+            text: DESIRE[category === "lighting" || category === "tools" ? category : "generic"][lang],
             factIds: [],
           };
         else dropped.push(id);

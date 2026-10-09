@@ -112,7 +112,9 @@ export class GeminiProductAnalyzer implements ProductAnalyzer {
       risks: a.risks,
       palette: main ? (await catalogPalette(main.path).catch(() => [])).slice(0, 6) : [],
       traits: {
-        emitsLight: category === "lighting" || hasText(/\b(LED|bulb)\b/i),
+        emitsLight:
+          category === "lighting" ||
+          ((category === "home" || category === "other") && hasText(/\b(bulb|lamp)\b/i)),
         hasMovingParts: category === "tools" || hasText(/motor|rotat|spin/i),
         hasScreen: category === "electronics" && hasText(/\b(screen|display)\b/i),
         tall: false,

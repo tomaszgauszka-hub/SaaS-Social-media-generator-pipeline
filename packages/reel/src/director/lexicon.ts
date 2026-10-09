@@ -205,6 +205,134 @@ export const CONCEPTS: Concept[] = [
     },
     categories: ["lighting", "home"],
   },
+
+  {
+    id: "battery_included",
+    en: "Battery included",
+    role: "selling",
+    test: [
+      /(batter|akku|akumulator|batería|batteria)/i,
+      /(included|inklusive|inclu[ií]d|inclus|w zestawie|incluse|in dotazione)/i,
+    ],
+    line: {
+      pl: "Akumulator jest w zestawie.",
+      en: "The battery is included.",
+      de: "Der Akku ist schon dabei.",
+      fr: "La batterie est fournie.",
+      es: "La batería viene incluida.",
+      it: "La batteria è inclusa.",
+    },
+    short: {
+      pl: "Akumulator w zestawie",
+      en: "Battery included",
+      de: "Akku inklusive",
+      fr: "Batterie fournie",
+      es: "Batería incluida",
+      it: "Batteria inclusa",
+    },
+    categories: ["tools"],
+  },
+  {
+    id: "charger_included",
+    en: "Charger included",
+    role: "technical",
+    test: [
+      /(charger|ladegerät|ładowark|cargador|chargeur|caricabatterie)/i,
+      /(included|inklusive|inclu[ií]d|inclus|w zestawie|in dotazione)/i,
+    ],
+    line: {
+      pl: "Ładowarka też jest w zestawie.",
+      en: "The charger is included too.",
+      de: "Das Ladegerät ist auch dabei.",
+      fr: "Le chargeur est aussi fourni.",
+      es: "El cargador también viene incluido.",
+      it: "Anche il caricabatterie è incluso.",
+    },
+    short: {
+      pl: "Ładowarka w zestawie",
+      en: "Charger included",
+      de: "Ladegerät inklusive",
+      fr: "Chargeur fourni",
+      es: "Cargador incluido",
+      it: "Caricabatterie incluso",
+    },
+    categories: ["tools"],
+  },
+  {
+    id: "led_work_light",
+    en: "Built-in LED work light",
+    role: "selling",
+    test: [
+      /LED/i,
+      /(light|licht|światł|luz|lumière|luce)/i,
+      /(work|arbeit|robocz|trabajo|travail|lavoro|drill|bohr|wiertark|wkrętark)/i,
+    ],
+    line: {
+      pl: "Wbudowana dioda LED oświetla miejsce pracy.",
+      en: "A built-in LED lights up your work.",
+      de: "Eine eingebaute LED leuchtet den Arbeitsbereich aus.",
+      fr: "Une LED intégrée éclaire la zone de travail.",
+      es: "Un LED integrado ilumina la zona de trabajo.",
+      it: "Un LED integrato illumina la zona di lavoro.",
+    },
+    short: {
+      pl: "Podświetlenie LED",
+      en: "LED work light",
+      de: "LED-Arbeitslicht",
+      fr: "Éclairage LED",
+      es: "Luz LED de trabajo",
+      it: "Luce LED di lavoro",
+    },
+    focus: "detail",
+    categories: ["tools"],
+  },
+  {
+    id: "keyless_chuck",
+    en: "Keyless chuck",
+    role: "technical",
+    test: [/(keyless|schnellspann|beznarzędziow|sin llave|sans clé|autoserrante)/i],
+    line: {
+      pl: "Szybkozaciskowy uchwyt — bity zmieniasz bez klucza.",
+      en: "A keyless chuck: swap bits without a key.",
+      de: "Schnellspannbohrfutter: Bits ohne Schlüssel wechseln.",
+      fr: "Mandrin sans clé : changez d'embout sans outil.",
+      es: "Portabrocas sin llave: cambia la punta sin herramientas.",
+      it: "Mandrino autoserrante: cambi la punta senza chiave.",
+    },
+    short: {
+      pl: "Uchwyt bez klucza",
+      en: "Keyless chuck",
+      de: "Schnellspannfutter",
+      fr: "Mandrin sans clé",
+      es: "Portabrocas sin llave",
+      it: "Mandrino autoserrante",
+    },
+    focus: "detail",
+    categories: ["tools"],
+  },
+  {
+    id: "carry_case",
+    en: "Carry case included",
+    role: "technical",
+    test: [/(case|koffer|walizk|maletín|mallette|valigetta)/i],
+    line: {
+      pl: "Całość w poręcznej walizce.",
+      en: "Everything comes in a carry case.",
+      de: "Alles kommt in einem Koffer.",
+      fr: "Le tout dans une mallette.",
+      es: "Todo viene en un maletín.",
+      it: "Il tutto in una valigetta.",
+    },
+    short: {
+      pl: "Walizka w zestawie",
+      en: "Carry case included",
+      de: "Mit Koffer",
+      fr: "Mallette fournie",
+      es: "Maletín incluido",
+      it: "Valigetta inclusa",
+    },
+    categories: ["tools"],
+  },
 ];
 
 /** Materials named in a "Metal+Wood+Fabric" style field, localized (generic products). */
@@ -277,8 +405,8 @@ export function factIdsFor(ids: readonly string[], facts: readonly ProductFact[]
 /* ---------------------------------------------------------------- hooks ------------------------- */
 
 export interface HookTemplate {
-  /** lines for light-emitting products (lamps …) */
-  lighting?: Lines;
+  /** category-specific lines (lamps, tools …); `generic` otherwise */
+  byCategory?: Partial<Record<CategoryKey, Lines>>;
   generic: Lines;
   /** facts the strategy needs before it may be used (none = always applicable) */
   requires?: "price" | "rating" | "performance" | "comparison" | "visual_contrast" | "concept";
@@ -286,13 +414,23 @@ export interface HookTemplate {
 
 export const HOOKS: Record<HookStrategy, HookTemplate> = {
   visual_surprise: {
-    lighting: {
-      pl: "Poczekaj, aż się zaświeci",
-      en: "Wait till it lights up",
-      de: "Warte, bis sie leuchtet",
-      fr: "Attendez qu'elle s'allume",
-      es: "Espera a que se encienda",
-      it: "Aspetta che si accenda",
+    byCategory: {
+      lighting: {
+        pl: "Poczekaj, aż się zaświeci",
+        en: "Wait till it lights up",
+        de: "Warte, bis sie leuchtet",
+        fr: "Attendez qu'elle s'allume",
+        es: "Espera a que se encienda",
+        it: "Aspetta che si accenda",
+      },
+      tools: {
+        pl: "Zobacz, co potrafi",
+        en: "Watch what it can do",
+        de: "Sieh, was er kann",
+        fr: "Regardez ce qu'elle sait faire",
+        es: "Mira lo que puede hacer",
+        it: "Guarda cosa sa fare",
+      },
     },
     generic: {
       pl: "Tego się nie spodziewasz",
@@ -305,13 +443,15 @@ export const HOOKS: Record<HookStrategy, HookTemplate> = {
   },
   before_after: {
     requires: "visual_contrast",
-    lighting: {
-      pl: "Ten sam kąt. Jedna lampa.",
-      en: "Same corner. One lamp.",
-      de: "Gleiche Ecke. Eine Lampe.",
-      fr: "Même coin. Une lampe.",
-      es: "Mismo rincón. Una lámpara.",
-      it: "Stesso angolo. Una lampada.",
+    byCategory: {
+      lighting: {
+        pl: "Ten sam kąt. Jedna lampa.",
+        en: "Same corner. One lamp.",
+        de: "Gleiche Ecke. Eine Lampe.",
+        fr: "Même coin. Une lampe.",
+        es: "Mismo rincón. Una lámpara.",
+        it: "Stesso angolo. Una lampada.",
+      },
     },
     generic: {
       pl: "Przed i po. Zobacz sam.",
@@ -323,13 +463,23 @@ export const HOOKS: Record<HookStrategy, HookTemplate> = {
     },
   },
   problem_hook: {
-    lighting: {
-      pl: "Wieczorem w salonie zbyt ponuro?",
-      en: "Living room too gloomy at night?",
-      de: "Abends zu trist im Wohnzimmer?",
-      fr: "Salon trop terne le soir ?",
-      es: "¿Salón demasiado apagado de noche?",
-      it: "Soggiorno troppo spento la sera?",
+    byCategory: {
+      lighting: {
+        pl: "Wieczorem w salonie zbyt ponuro?",
+        en: "Living room too gloomy at night?",
+        de: "Abends zu trist im Wohnzimmer?",
+        fr: "Salon trop terne le soir ?",
+        es: "¿Salón demasiado apagado de noche?",
+        it: "Soggiorno troppo spento la sera?",
+      },
+      tools: {
+        pl: "Śruby, które nie chcą wejść?",
+        en: "Screws that just won't go in?",
+        de: "Schrauben, die nicht reingehen?",
+        fr: "Des vis qui résistent ?",
+        es: "¿Tornillos que no entran?",
+        it: "Viti che non entrano?",
+      },
     },
     generic: {
       pl: "Masz dość kompromisów?",
@@ -341,13 +491,23 @@ export const HOOKS: Record<HookStrategy, HookTemplate> = {
     },
   },
   pain_point: {
-    lighting: {
-      pl: "Nudna lampa gasi cały pokój",
-      en: "A dull lamp dims the whole room",
-      de: "Eine fade Lampe macht den Raum fad",
-      fr: "Une lampe banale éteint la pièce",
-      es: "Una lámpara aburrida apaga la sala",
-      it: "Una lampada anonima spegne la stanza",
+    byCategory: {
+      lighting: {
+        pl: "Nudna lampa gasi cały pokój",
+        en: "A dull lamp dims the whole room",
+        de: "Eine fade Lampe macht den Raum fad",
+        fr: "Une lampe banale éteint la pièce",
+        es: "Una lámpara aburrida apaga la sala",
+        it: "Una lampada anonima spegne la stanza",
+      },
+      tools: {
+        pl: "Ręczne wkręcanie to strata czasu",
+        en: "Driving screws by hand wastes time",
+        de: "Von Hand schrauben kostet Zeit",
+        fr: "Visser à la main fait perdre du temps",
+        es: "Atornillar a mano es perder tiempo",
+        it: "Avvitare a mano fa perdere tempo",
+      },
     },
     generic: {
       pl: "Koniec z bylejakością",
@@ -359,13 +519,23 @@ export const HOOKS: Record<HookStrategy, HookTemplate> = {
     },
   },
   question: {
-    lighting: {
-      pl: "Szukasz lampy z charakterem?",
-      en: "Looking for a lamp with character?",
-      de: "Suchst du eine Lampe mit Charakter?",
-      fr: "Envie d'une lampe qui a du caractère ?",
-      es: "¿Buscas una lámpara con carácter?",
-      it: "Cerchi una lampada con carattere?",
+    byCategory: {
+      lighting: {
+        pl: "Szukasz lampy z charakterem?",
+        en: "Looking for a lamp with character?",
+        de: "Suchst du eine Lampe mit Charakter?",
+        fr: "Envie d'une lampe qui a du caractère ?",
+        es: "¿Buscas una lámpara con carácter?",
+        it: "Cerchi una lampada con carattere?",
+      },
+      tools: {
+        pl: "Szukasz narzędzia na lata?",
+        en: "Looking for a tool that lasts?",
+        de: "Suchst du Werkzeug für Jahre?",
+        fr: "Un outil qui dure, ça vous dit ?",
+        es: "¿Buscas una herramienta para años?",
+        it: "Cerchi un attrezzo che duri?",
+      },
     },
     generic: {
       pl: "Szukasz czegoś z charakterem?",
@@ -437,7 +607,15 @@ export const HOOKS: Record<HookStrategy, HookTemplate> = {
 /* ---------------------------------------------------------------- emotion, CTA, disclosure ------ */
 
 /** DESIRE lines — emotional, no product claim (no fact ids). */
-export const DESIRE: Record<"lighting" | "generic", Lines> = {
+export const DESIRE: Record<"lighting" | "tools" | "generic", Lines> = {
+  tools: {
+    pl: "Narzędzie, po które sięgniesz przy każdym projekcie.",
+    en: "The tool you'll reach for on every project.",
+    de: "Das Werkzeug, zu dem du bei jedem Projekt greifst.",
+    fr: "L'outil que vous prendrez pour chaque projet.",
+    es: "La herramienta que usarás en cada proyecto.",
+    it: "L'attrezzo che userai in ogni progetto.",
+  },
   lighting: {
     pl: "Wieczór w zupełnie nowym świetle.",
     en: "Your evenings, in a whole new light.",

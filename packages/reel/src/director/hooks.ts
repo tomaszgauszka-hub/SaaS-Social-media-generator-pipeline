@@ -129,7 +129,7 @@ export function hookLine(
       return { text: m.concept.hook[lang], factIds: factIdsFor(m.factIds, c.facts, locale) };
     return hookLine("question", locale, c);
   }
-  let text = (c.category === "lighting" && t.lighting ? t.lighting : t.generic)[lang];
+  let text = (t.byCategory?.[c.category] ?? t.generic)[lang];
   const factIds: string[] = [];
   if (text.includes("{price}") && c.price) {
     text = text.replace("{price}", `${formatNumber(c.price.amount, lang)} ${c.price.currency}`);

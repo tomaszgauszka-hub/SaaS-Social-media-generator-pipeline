@@ -158,7 +158,11 @@ export class DeterministicProductAnalyzer implements ProductAnalyzer {
 
     const heightCm = facts.find((f) => f.id === "dim.height.cm")?.value;
     const widthCm = facts.find((f) => f.id === "dim.width.cm")?.value;
-    const emitsLight = category === "lighting" || has(facts, /\b(LED|bulb|leuchtmittel|bombilla)\b/i);
+    // a light source is the product itself (lamps), not an accessory LED (a drill's work light, a charger LED)
+    const emitsLight =
+      category === "lighting" ||
+      ((category === "home" || category === "other") &&
+        has(facts, /\b(bulb|leuchtmittel|bombilla|lampe|lamp)\b/i));
     const visual: string[] = [];
     if (has(facts, /walnut|walnuss|nogal/i)) visual.push("walnut wood base");
     if (has(facts, /brass|messing|latón/i))

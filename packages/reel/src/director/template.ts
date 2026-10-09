@@ -208,10 +208,24 @@ export interface CopyPick {
 /** The claim content per role, in priority order (lamp-specific concepts first). */
 const ROLE_CONCEPTS: Partial<Record<SalesRole, string[]>> = {
   BENEFIT: ["materials_walnut_brass_fabric", "mid_century_style", "room_standout", "led_bulb_included"],
-  PROOF: ["curved_brass_stem", "mid_century_style", "materials_walnut_brass_fabric", "easy_assembly"],
+  PROOF: [
+    "curved_brass_stem",
+    "led_work_light",
+    "keyless_chuck",
+    "mid_century_style",
+    "materials_walnut_brass_fabric",
+    "easy_assembly",
+  ],
   DESIRE: ["led_bulb_included", "room_standout", "easy_assembly"],
-  VALUE: ["room_standout", "easy_assembly", "led_bulb_included"],
-  DEMO: ["easy_assembly", "materials_walnut_brass_fabric"],
+  VALUE: [
+    "carry_case",
+    "charger_included",
+    "battery_included",
+    "room_standout",
+    "easy_assembly",
+    "led_bulb_included",
+  ],
+  DEMO: ["battery_included", "keyless_chuck", "easy_assembly", "materials_walnut_brass_fabric"],
 };
 
 export function pickConcept(
@@ -322,7 +336,7 @@ export function templateDecision(input: DirectorInput): DirectorDecision {
       case "DESIRE": {
         voice.push({
           role: "DESIRE",
-          text: DESIRE[category === "lighting" ? "lighting" : "generic"][lang],
+          text: DESIRE[category === "lighting" || category === "tools" ? category : "generic"][lang],
           factIds: [],
         });
         const m = pickConcept("DESIRE", matched, used);

@@ -262,3 +262,82 @@ describe("beat snapping", () => {
     expect(Math.abs(b[2]! / (60_000 / 105) - Math.round(b[2]! / (60_000 / 105)))).toBeLessThan(0.06);
   });
 });
+
+describe("tools category (synthetic cordless drill facts)", () => {
+  const drill: ProductSource = {
+    id: "DRILL1",
+    source: { kind: "json", ref: "test", license: "test" },
+    brand: "Acme",
+    names: { "en-US": "Acme 18V Cordless Drill Driver" },
+    category: "Drills",
+    categoryPath: "/Tools/Power Tools/Drills",
+    facts: [
+      {
+        id: "bp.en-US.1",
+        kind: "included",
+        text: "2.0 Ah battery and charger included",
+        source: "t",
+        locale: "en-US",
+      },
+      {
+        id: "bp.en-US.2",
+        kind: "feature",
+        text: "Keyless chuck for fast bit changes",
+        source: "t",
+        locale: "en-US",
+      },
+      {
+        id: "bp.en-US.3",
+        kind: "feature",
+        text: "Built-in LED work light for the drilling area",
+        source: "t",
+        locale: "en-US",
+      },
+      { id: "bp.en-US.4", kind: "included", text: "Delivered in a carry case", source: "t", locale: "en-US" },
+    ],
+    images: [],
+  };
+
+  it("uses tool concepts proven by the facts and keeps claims valid in PL and DE", async () => {
+    const profile = await new DeterministicProductAnalyzer().analyze(drill, ctx());
+    expect(profile.category).toBe("tools");
+    const brand = loadBrandProfile("assets/brands/homely-finds/brand.json");
+    for (const locale of ["pl-PL", "de-DE"]) {
+      const d = templateDecision(directorInput(drill, profile, brand, locale));
+      const all = [
+        d.hook.text,
+        ...d.voiceover.lines.map((l) => l.text),
+        ...d.shots.flatMap((s) => (s.overlay ? [s.overlay.text] : [])),
+      ];
+      expect(all.join(" ")).toMatch(
+        locale === "pl-PL" ? /Akumulator|Szybkozaciskowy|LED/ : /Akku|Schnellspann|LED/,
+      );
+      expect(d.shots[0]!.preset).toBe("impact");
+      const job = ReelJob.parse({
+        jobId: "d",
+        productId: "DRILL1",
+        brandId: "b",
+        locales: [{ locale, market: locale.slice(3) }],
+      });
+      const plan = compilePlan({
+        decision: d,
+        job,
+        source: drill,
+        profile,
+        brand,
+        platform,
+        tier: TIER_PROFILES.ECONOMY,
+        locale,
+        market: locale.slice(3),
+        variantKey: "A",
+        director: { provider: "template", model: "t", promptVersion: "1", fallbackUsed: false },
+        providers: {},
+        fallbacks: {},
+        configVersion: "test",
+      });
+      expect(validateCopy(plan.copy, drill, brand, profile).filter((i) => i.severity !== "minor")).toEqual(
+        [],
+      );
+    }
+  });
+});
