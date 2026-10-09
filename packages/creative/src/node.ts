@@ -237,3 +237,5 @@ export function prepareCreative(
     planHash: stableHash(plan),
   };
 }
+
+export { FileFontMeasurer } from "./font-file.ts";
