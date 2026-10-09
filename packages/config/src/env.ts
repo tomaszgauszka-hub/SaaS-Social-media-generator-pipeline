@@ -81,6 +81,48 @@ export const EnvSchema = z.object({
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
   DISPATCHER_POLL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
   WORK_DIR: z.string().default(".data/work"),
+
+  /*
+   * Google AI (Gemini API at generativelanguage.googleapis.com; Cloud TTS / Speech-to-Text / Agent Platform
+   * with an OAuth access token). Model ids live here only — business logic never names a model. Defaults were
+   * checked against Google's docs on 2026-10-08 (docs/GOOGLE_AI.md); override them without code changes.
+   */
+  GOOGLE_API_KEY: z.string().optional(),
+  GOOGLE_GENAI_BASE_URL: z.url().default("https://generativelanguage.googleapis.com"),
+  /** OAuth access token for Cloud TTS / Speech-to-Text / Agent Platform (e.g. `gcloud auth print-access-token`) */
+  GOOGLE_CLOUD_ACCESS_TOKEN: z.string().optional(),
+  GOOGLE_CLOUD_PROJECT: z.string().optional(),
+  GOOGLE_CLOUD_LOCATION: z.string().default("global"),
+  GOOGLE_DIRECTOR_MODEL: z.string().default("gemini-3.5-flash-lite"),
+  GOOGLE_DIRECTOR_FALLBACK_MODEL: z.string().default("gemini-3.8-flash"),
+  GOOGLE_IMAGE_MODEL: z.string().default("gemini-nano-banana-2.1"),
+  GOOGLE_MUSIC_MODEL: z.string().default("lyria-3.5"),
+  /** Lyria output may be used commercially only after the licence was checked for your account / contract */
+  GOOGLE_MUSIC_COMMERCIAL_USE: bool(false),
+  GOOGLE_TTS_MODEL: z.string().default("gemini-3.8-flash-tts"),
+  GOOGLE_TTS_VOICE: z.string().default("Kore"),
+  GOOGLE_TRANSCRIPTION_MODEL: z.string().default("gemini-3.5-transcribe"),
+  GOOGLE_EMBEDDING_MODEL: z.string().default("gemini-embedding-2"),
+  GOOGLE_EMBEDDING_DIMENSIONS: z.coerce.number().int().min(128).max(3072).default(768),
+  GOOGLE_VIDEO_MODEL: z.string().default("veo-3.1-fast-generate-001"),
+  /** client-side request cap per minute shared by all Google calls of a process */
+  GOOGLE_MAX_RPM: z.coerce.number().int().min(1).max(10_000).default(60),
+
+  /** Generative video is the last resort: off unless enabled AND allowed by the tier and the job budget */
+  GENERATIVE_VIDEO_ENABLED: bool(false),
+  REEL_MAX_GENERATIVE_VIDEO_SECONDS: z.coerce.number().min(0).max(10).default(0),
+
+  /** Python interpreter with the `bpy` module (Blender as a module) — or BLENDER_BIN for a Blender executable */
+  BLENDER_PYTHON: z.string().default(".tools/blender-venv/bin/python"),
+  BLENDER_BIN: z.string().optional(),
+  BLENDER_THREADS: z.coerce.number().int().min(0).max(256).default(0),
+  /** one Blender render at a time per host (CPU/GPU resource lock) */
+  BLENDER_MAX_CONCURRENT: z.coerce.number().int().min(1).max(8).default(1),
+  /** local neural TTS fallback (rhasspy/piper) */
+  PIPER_BIN: z.string().default(".tools/piper/piper/piper"),
+  PIPER_VOICES_DIR: z.string().default(".tools/piper/voices"),
+  REEL_CACHE_DIR: z.string().default(".data/reel-cache"),
+  REEL_OUTPUT_DIR: z.string().default(".data/reels"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

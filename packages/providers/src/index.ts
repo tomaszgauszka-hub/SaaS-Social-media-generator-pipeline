@@ -8,3 +8,5 @@ export * from "./storage/s3.ts";
 export * from "./storage/types.ts";
 export * from "./tts/remote.ts";
 export * from "./types.ts";
+
+export type * from "./google/types.ts";
