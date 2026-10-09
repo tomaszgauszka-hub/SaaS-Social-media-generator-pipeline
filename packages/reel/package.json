@@ -19,6 +19,10 @@
     "@cre/motion": "workspace:*",
     "@cre/providers": "workspace:*",
     "@cre/shared": "workspace:*",
+    "fontkit": "2.0.4",
     "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/fontkit": "^2.0.9"
   }
 }

@@ -2,7 +2,7 @@
   "name": "content-revenue-engine",
   "version": "0.1.0",
   "private": true,
-  "description": "Automated multi-brand content → distribution → analytics → revenue optimization engine",
+  "description": "Automated multi-brand content \u2192 distribution \u2192 analytics \u2192 revenue optimization engine",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "engines": {
@@ -33,7 +33,9 @@
     "services:up": "docker compose up -d",
     "services:down": "docker compose down",
     "check": "pnpm typecheck && pnpm lint && pnpm test",
-    "creative:benchmark": "pnpm --filter @cre/worker benchmark"
+    "creative:benchmark": "pnpm --filter @cre/worker benchmark",
+    "reel": "pnpm --filter @cre/worker reel",
+    "reel:fetch-abo": "pnpm --filter @cre/worker reel:fetch-abo"
   },
   "devDependencies": {
     "@cre/config": "workspace:*",

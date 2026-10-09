@@ -1,0 +1,76 @@
+import { ReelPlan, type ReelPlanInput } from "../contracts/plan.ts";
+
+/** A small, valid 5 s plan (3 shots: cut, fade 400 ms, slide-up 300 ms) for unit and ffmpeg tests. */
+export function testPlan(over: Partial<ReelPlanInput> = {}): ReelPlan {
+  const shot = (i: number, startMs: number, durationMs: number, t: "cut" | "fade" | "slideup", ms = 0) => ({
+    id: `sh0${i}`,
+    role: (["HOOK", "BENEFIT", "CTA"] as const)[i - 1]!,
+    startMs,
+    durationMs,
+    preset: "hero_reveal" as const,
+    technique: "plate" as const,
+    environment: "warm_living" as const,
+    lighting: "three_point" as const,
+    params: {},
+    productAnimation: "none" as const,
+    transitionIn: { type: t, ms },
+    source: "blender" as const,
+  });
+  return ReelPlan.parse({
+    version: "reel-plan/1",
+    metadata: {
+      planId: "p1",
+      jobId: "job1",
+      variantKey: "A",
+      configVersion: "test",
+      seed: "s",
+      hookStrategy: "visual_surprise",
+      director: { provider: "template", model: "t/1", promptVersion: "1", fallbackUsed: false },
+    },
+    product: { id: "B075X2FZSM", name: "Lamp", brand: "Rivet", factIds: [] },
+    masterLocale: "pl-PL",
+    language: "pl-PL",
+    market: "PL",
+    platform: "tiktok",
+    durationMs: 5000,
+    resolution: { width: 1080, height: 1920 },
+    fps: 30,
+    objective: "conversion",
+    targetAudience: "home",
+    structure: [{ role: "HOOK", startMs: 0, endMs: 1500 }],
+    visual_style: {
+      environment: "warm_living",
+      energy: 0.5,
+      lighting: "three_point",
+      palette: { primary: "#2B2420", accent: "#E8A33D", text: "#FFFFFF" },
+    },
+    camera: { lensMm: 65, dof: { enabled: true, fStop: 4 }, motionBlur: false },
+    product_animation: { default: "none" },
+    shots: [shot(1, 0, 1500, "cut"), shot(2, 1500, 2000, "fade", 400), shot(3, 3500, 1500, "slideup", 300)],
+    voiceover: { enabled: true, personaId: "p", pace: 1, style: "warm", segments: [] },
+    music: {
+      intent: { genre: "deep_house", mood: "warm", bpm: 110, energy: 0.6, durationMs: 5000, seed: "m" },
+      gainDb: -10,
+      ducking: { enabled: true, depthDb: 10, attackMs: 80, releaseMs: 350 },
+    },
+    sfx: [],
+    captions: { enabled: true, style: "word_highlight", source: "voiceover", maxWordsPerPhrase: 4 },
+    cta: { slot: "cta", buttonSlot: "button", startMs: 3500, endMs: 5000, style: "button" },
+    branding: { logo: { enabled: true, position: "top_left", startMs: 0, endMs: 5000 }, brandName: "Homely" },
+    render_profile: {
+      blender: "FAST",
+      encode: { crf: 20, preset: "veryfast" },
+      audio: { sampleRate: 48_000, lufs: -14, truePeakDb: -1.5 },
+    },
+    providers: {},
+    fallbacks: {},
+    budget: { maxApiCostUsd: 0, estimatedApiCostUsd: 0 },
+    copy: {
+      locale: "pl-PL",
+      market: "PL",
+      slots: { cta: { kind: "cta", text: "Link w bio" } },
+      transcreation: { provider: "master", model: "-", sourceLocale: "pl-PL", isMaster: true },
+    },
+    ...over,
+  });
+}

@@ -138,6 +138,9 @@ importers:
       '@cre/providers':
         specifier: workspace:*
         version: link:../../packages/providers
+      '@cre/reel':
+        specifier: workspace:*
+        version: link:../../packages/reel
       '@cre/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -384,9 +387,16 @@ importers:
       '@cre/shared':
         specifier: workspace:*
         version: link:../shared
+      fontkit:
+        specifier: 2.0.4
+        version: 2.0.4
       zod:
         specifier: 4.6.5
         version: 4.6.5
+    devDependencies:
+      '@types/fontkit':
+        specifier: ^2.0.9
+        version: 2.0.9
 
   packages/shared:
     dependencies:
