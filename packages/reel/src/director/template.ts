@@ -329,7 +329,8 @@ export function templateDecision(input: DirectorInput): DirectorDecision {
         if (m) {
           used.add(m.concept.id);
           shot.overlay = { text: m.concept.short[lang], factIds: factIdsFor(m.factIds, facts, input.locale) };
-          if (m.concept.focus && b.preset !== "cta_hero") shot.focus = b.focus ?? m.concept.focus;
+          // the claim decides what the camera looks at (the beat's focus is only the default)
+          if (m.concept.focus && b.preset !== "cta_hero") shot.focus = m.concept.focus;
         }
         break;
       }

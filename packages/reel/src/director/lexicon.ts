@@ -109,7 +109,8 @@ export const CONCEPTS: Concept[] = [
       es: "Mira ese poste de latón curvado",
       it: "Guarda questo stelo in ottone curvo",
     },
-    focus: "middle",
+    // the curve is the brass flare above the walnut base — frame it there, not at the rod / shade joint
+    focus: "base",
     categories: ["lighting", "home"],
   },
   {

@@ -112,8 +112,10 @@ export function buildRegistry(a: {
   ];
   const transcription: TranscriptionProvider[] = g && tier.voice !== "local" ? [g.transcription] : [];
   const localSfx = new LocalSfxProvider();
+  // cache (library hits only) → local synthesis (always works, cached itself) → ElevenLabs (PREMIUM, read-through)
   const sfx: SfxProvider[] = [
     new CachedSfxProvider(localSfx, { cacheDir: a.tools.cacheDir }),
+    localSfx,
     ...(tier.sfx === "api"
       ? [
           new CachedSfxProvider(new ElevenLabsSfxProvider(env), {
