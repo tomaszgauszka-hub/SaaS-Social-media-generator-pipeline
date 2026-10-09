@@ -273,6 +273,8 @@ export const ReelPlan = z.object({
     /** captions follow the voice-over (word timings) or the on-screen overlays */
     source: z.enum(["voiceover", "overlay"]),
     maxWordsPerPhrase: z.number().int().min(1).max(8),
+    /** vertical shift of the platform caption band (QA retry "reposition_captions") */
+    offsetYPx: z.number().int().min(-400).max(400).optional(),
   }),
   cta: z.object({
     slot: SlotId,

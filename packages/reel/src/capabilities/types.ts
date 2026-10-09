@@ -246,6 +246,8 @@ export interface GenerativeVideoProvider extends ProviderBase {
 
 export interface VisualQaRequest {
   frames: { atMs: number; path: string }[];
+  /** product box (px on the frame) per frame when known — local checks inspect that region */
+  productRects?: ({ x: number; y: number; w: number; h: number } | null)[];
   productName: string;
   ctaText: string;
   locale: LocaleTag;

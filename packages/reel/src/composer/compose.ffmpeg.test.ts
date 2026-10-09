@@ -269,7 +269,6 @@ describe.skipIf(!hasFfmpeg)("ReelComposer end to end (synthetic inputs)", () => 
         ],
         captions,
         texts,
-        platform,
         outPath: path.join(dir, `${locale}.mp4`),
         posterPath: path.join(dir, `${locale}.jpg`),
         workDir: dir,

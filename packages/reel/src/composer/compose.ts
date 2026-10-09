@@ -14,12 +14,7 @@ import type {
   VoiceTrack,
 } from "../contracts/media.ts";
 import type { ReelPlan } from "../contracts/plan.ts";
-import {
-  PLATFORM_PROFILES,
-  type BrandProfile,
-  type PlatformProfile,
-  type Rect,
-} from "../contracts/profiles.ts";
+import { PLATFORM_PROFILES, type BrandProfile, type Rect } from "../contracts/profiles.ts";
 import { FileCache, fileSha256 } from "../util/cache.ts";
 import {
   buildLoudnessApplyArgs,
@@ -204,7 +199,6 @@ export interface ComposeLocalizedInput {
   sfx: readonly SfxCueFile[];
   captions?: CaptionTrack;
   texts: readonly TextElement[];
-  platform: PlatformProfile;
   outPath: string;
   posterPath: string;
   workDir: string;
@@ -231,7 +225,7 @@ export interface LocalizedVideo {
 
 export async function composeLocalized(input: ComposeLocalizedInput): Promise<LocalizedVideo> {
   const t0 = Date.now();
-  const { plan, platform } = input;
+  const { plan } = input;
   const run = (args: string[], logLevel?: "info") =>
     runFfmpeg(args, { ...(input.signal ? { signal: input.signal } : {}), ...(logLevel ? { logLevel } : {}) });
   const tag = `${plan.metadata.variantKey}-${plan.language}`.replace(/[^A-Za-z0-9_-]/g, "_");
@@ -252,7 +246,11 @@ export async function composeLocalized(input: ComposeLocalizedInput): Promise<Lo
     outWav: mixWav,
   });
   await run(mix.args);
-  const target = loudnormTarget(platform.loudness);
+  // the plan's mastering target (from the platform; a QA retry may lower the true-peak ceiling)
+  const target = loudnormTarget({
+    lufs: plan.render_profile.audio.lufs,
+    truePeakDb: plan.render_profile.audio.truePeakDb,
+  });
   let audio: LocalizedVideo["audio"];
   try {
     const measured = parseLoudnormJson((await run(buildLoudnessMeasureArgs(mixWav, target), "info")).stderr);
