@@ -9,4 +9,4 @@ export * from "./storage/types.ts";
 export * from "./tts/remote.ts";
 export * from "./types.ts";
 
-export type * from "./google/types.ts";
+export * from "./google/index.ts";
