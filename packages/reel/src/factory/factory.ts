@@ -462,6 +462,11 @@ export class ReelFactory {
     const produced = await jc.clock.time("blender", () =>
       produceShotClips(plan, jc.source, plan.render_profile.blender, jc.ctxFor("master"), {
         emitsLight: jc.profile.traits.emitsLight,
+        // one log line per finished shot and every 10th frame (ops can see where a long render is)
+        onProgress: (p) => {
+          if (p.frame === p.total || p.frame % 10 === 0)
+            jc.log.info({ shot: p.shotId, frame: `${p.frame}/${p.total}`, ms: p.ms }, "studio progress");
+        },
       }),
     );
     if (produced.skipped.length)
