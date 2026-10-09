@@ -31,3 +31,6 @@ tmp/
 
 # visual review stills (local)
 .review/
+
+# local tool installs (Blender bpy venv, Piper TTS binary + voices) — see tools/README.md
+.tools/
