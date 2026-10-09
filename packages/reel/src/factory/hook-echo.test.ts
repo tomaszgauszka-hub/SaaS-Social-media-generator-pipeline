@@ -1,0 +1,46 @@
+import { describe, expect, it } from "vitest";
+import { withoutHookEcho, unitEconomics } from "./factory.ts";
+
+const plan = (spoken: string, shown: string) => ({
+  copy: {
+    locale: "pl-PL",
+    market: "PL",
+    slots: {
+      hook: { kind: "hook" as const, text: shown, factIds: [] },
+      "voice.1.hook": { kind: "voice" as const, text: spoken, factIds: [] },
+    },
+    transcreation: { provider: "t", model: "t", sourceLocale: "pl-PL", isMaster: true },
+  },
+});
+const phrases = [
+  { startMs: 250, endMs: 1400 },
+  { startMs: 2400, endMs: 3800 },
+];
+const texts = [{ kind: "hook", startMs: 150, endMs: 2170 }];
+
+describe("hook echo", () => {
+  it("drops captions that repeat the on-screen hook, keeps the rest", () => {
+    expect(
+      withoutHookEcho(phrases, texts, plan("Poczekaj, aż się zaświeci.", "Poczekaj, aż się zaświeci")),
+    ).toEqual([phrases[1]]);
+    expect(withoutHookEcho(phrases, texts, plan("Inna linia.", "Poczekaj, aż się zaświeci"))).toEqual(
+      phrases,
+    );
+  });
+});
+
+describe("unit economics", () => {
+  it("adds host time to API spend, divides by reels and computes break-even sales", () => {
+    const e = unitEconomics({
+      apiUsd: 0.02,
+      wallMs: 3_600_000,
+      usdPerHour: 0.15,
+      reels: 10,
+      commission: { commissionUsd: 2 },
+    });
+    expect(e).toMatchObject({ computeUsd: 0.15, totalUsd: 0.17, perReelUsd: 0.017, breakEvenSales: 1 });
+    expect(
+      unitEconomics({ apiUsd: 0, wallMs: 0, usdPerHour: 0.15, reels: 1, commission: {} }).breakEvenSales,
+    ).toBeUndefined();
+  });
+});

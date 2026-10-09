@@ -547,16 +547,20 @@ export class ReelFactory {
         );
       if (voice && "issues" in voice && Array.isArray(voice.issues) && voice.issues.length)
         log.warn({ variantId, issues: voice.issues }, "voice track issues");
+      const layout = buildTextElements({ plan: localized, brand, platform, measurer });
       const rawCaptions =
         localized.captions.enabled && voice
           ? buildCaptionTrack({ voice, plan: localized, platform, brand, measurer })
           : undefined;
       const offset = localized.captions.offsetYPx ?? 0;
-      const captions =
-        rawCaptions && offset
-          ? { ...rawCaptions, box: { ...rawCaptions.box, y: rawCaptions.box.y + offset } }
-          : rawCaptions;
-      const layout = buildTextElements({ plan: localized, brand, platform, measurer });
+      const captions = rawCaptions
+        ? {
+            ...rawCaptions,
+            // the spoken hook is already on screen as the hook headline — don't print it twice
+            phrases: withoutHookEcho(rawCaptions.phrases, layout.elements, localized),
+            ...(offset ? { box: { ...rawCaptions.box, y: rawCaptions.box.y + offset } } : {}),
+          }
+        : undefined;
       if (layout.issues.length) log.warn({ variantId, issues: layout.issues }, "text layout issues");
       const composed = await clock.time("ffmpeg_localized", () =>
         composeLocalized({
@@ -954,6 +958,27 @@ export function unitEconomics(a: {
         }
       : {}),
   };
+}
+
+/** Caption phrases spoken while the on-screen hook shows the same line are dropped (no double text). */
+export function withoutHookEcho<P extends { startMs: number; endMs: number }>(
+  phrases: readonly P[],
+  texts: readonly { kind: string; startMs: number; endMs: number }[],
+  plan: Pick<ReelPlan, "copy">,
+): P[] {
+  const hook = texts.find((t) => t.kind === "hook");
+  const spoken = Object.entries(plan.copy.slots).find(([id]) => /^voice\.\d+\.hook$/.test(id))?.[1]?.text;
+  const shown = plan.copy.slots.hook?.text;
+  const norm = (x: string) =>
+    x
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N} ]/gu, "")
+      .trim();
+  if (!hook || !spoken || !shown || norm(spoken) !== norm(shown)) return [...phrases];
+  return phrases.filter(
+    (p) =>
+      !(p.startMs < hook.endMs && (Math.min(p.endMs, hook.endMs) - p.startMs) / (p.endMs - p.startMs) > 0.5),
+  );
 }
 
 function visualPart(plan: ReelPlan): unknown {
