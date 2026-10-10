@@ -88,12 +88,16 @@ export const ReelManifest = z.object({
     }),
   ),
   durationMs: z.number().int(),
-  /** wall time per stage */
+  /** wall time per stage spent delivering THIS variant (marginal; shared work is in the job record) */
   timings: z.record(z.string(), z.number().int()),
   renderTimeMs: z.number().int(),
   tokens: z.object({ input: z.number().int(), output: z.number().int() }),
+  /** API cost and compute of THIS variant only (its own scope — the marginal cost of one more reel) */
   cost: CostBreakdown,
   totalApiCostUsd: z.number(),
+  /** API cost of the work this variant shares with its siblings (product analysis, director, studio, music,
+   * SFX, transcreation, the voice of another platform) — informative, never summed across variants */
+  sharedApiCostUsd: z.number().optional(),
   fallbacks: z.array(FallbackRecord),
   generativeVideo: z.array(
     z.object({

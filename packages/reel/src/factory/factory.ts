@@ -17,7 +17,13 @@ import type { Env } from "@cre/config";
 import { FileFontMeasurer } from "@cre/creative/node";
 import type { GoogleAI } from "@cre/providers";
 import { sha256Hex, stableStringify, type Logger } from "@cre/shared";
-import { buildCaptionTrack, buildSfxCues, buildVoiceTrack, fitMusicToTimeline } from "../audio/index.ts";
+import {
+  buildCaptionTrack,
+  buildSfxCues,
+  buildVoiceTrack,
+  fitMusicToTimeline,
+  type VoiceTrackResult,
+} from "../audio/index.ts";
 import { runChain, type ChainOutcome } from "../capabilities/chain.ts";
 import type {
   CallContext,
@@ -40,7 +46,7 @@ import {
 } from "../contracts/ids.ts";
 import { ReelJob, type ReelJobInput } from "../contracts/job.ts";
 import type { FallbackRecord, QaReport, ReelManifest } from "../contracts/manifest.ts";
-import type { MusicTrack, SfxCueFile, ShotClip, VoiceTrack } from "../contracts/media.ts";
+import type { MusicTrack, SfxCueFile, ShotClip } from "../contracts/media.ts";
 import type { LocaleCopy, ReelPlan } from "../contracts/plan.ts";
 import type { ProductProfile, ProductSource } from "../contracts/product.ts";
 import {
@@ -59,7 +65,7 @@ import {
   type CategoryKey,
   type HookContext,
 } from "../director/index.ts";
-import { planRetry, runReelQa } from "../qa/index.ts";
+import { planRetry, runReelQa, scoreReport } from "../qa/index.ts";
 import { AssetIndex, AssetRetriever, type Retrieved } from "../retrieval/index.ts";
 import { produceShotClips } from "../studio/index.ts";
 import { resolveReelTools, type ReelTools } from "../util/tools.ts";
@@ -140,16 +146,26 @@ class StageClock {
   }
 }
 
+/** a capability chain through the job's BudgetGate; a fallback is recorded under the cost scope it served */
 type Chain = <P extends ProviderBase, R>(
   capability: Capability,
   providers: readonly P[],
   estimate: (p: P) => number,
   run: (p: P) => Promise<R>,
+  scope: string,
 ) => Promise<ChainOutcome<P, R>>;
+
+/** job-level work every variant shares (product analysis, retrieval) */
+const JOB_SCOPE = "master";
+const armScope = (variantKey: string) => `${variantKey}:master`;
 
 /** Everything one A/B arm shares across its locales and platforms. */
 interface Arm {
   variantKey: string;
+  /** cost / fallback scopes of the shared work this arm's reels use (its own + the arm it re-hooks) */
+  scopes: string[];
+  /** set for a copy-mode arm: the arm whose master, music and SFX it reuses */
+  copyOf?: string;
   plan: ReelPlan;
   director: DirectorProvider;
   gv: GenerativeVideoDecision[];
@@ -170,7 +186,9 @@ interface JobCtx {
   tracker: CostTracker;
   gate: BudgetGate;
   clock: StageClock;
-  fallbacks: FallbackRecord[];
+  /** fallbacks per cost scope (job, arm, variant) — a manifest lists only those of the work it uses */
+  fallbacks: Map<string, FallbackRecord[]>;
+  addFallback: (scope: string, f: FallbackRecord) => void;
   memory: HookMemory;
   jobDir: string;
   workDir: string;
@@ -195,10 +213,17 @@ export class ReelFactory {
     const { source, brand } = input;
     const tier = TIER_PROFILES[job.tier];
     const budgetUsd = job.maxApiCost ?? tier.defaultMaxApiCostUsd;
+    // a worker retry of an unfinished job continues on the budget its earlier attempts left
+    const priorUsd = (await this.deps.store.jobStarted(job, budgetUsd))?.priorApiCostUsd ?? 0;
     const tracker = new CostTracker();
-    const gate = new BudgetGate(Math.round(budgetUsd * 1e6), tracker);
+    const gate = new BudgetGate(Math.max(0, Math.round((budgetUsd - priorUsd) * 1e6)), tracker);
     const clock = new StageClock();
-    const fallbacks: FallbackRecord[] = [];
+    const fallbacks = new Map<string, FallbackRecord[]>();
+    const addFallback = (scope: string, f: FallbackRecord) => {
+      const list = fallbacks.get(scope) ?? [];
+      if (!list.some((x) => x.capability === f.capability && x.used === f.used)) list.push(f);
+      fallbacks.set(scope, list);
+    };
     const log = this.deps.logger.child({ jobId: job.jobId, productId: job.productId });
     const jobDir = path.join(this.tools.outputDir, job.jobId);
     const workDir = path.join(this.tools.workDir, "reel", job.jobId);
@@ -225,6 +250,7 @@ export class ReelFactory {
       providers: readonly P[],
       estimate: (p: P) => number,
       run: (p: P) => Promise<R>,
+      scope: string,
     ) => {
       const out = await runChain<P, R>({
         capability,
@@ -234,24 +260,25 @@ export class ReelFactory {
         run,
         ...(opts.signal ? { signal: opts.signal } : {}),
       });
-      if (
-        out.fallback &&
-        !fallbacks.some((f) => f.capability === capability && f.used === out.fallback!.used)
-      )
-        fallbacks.push(out.fallback);
+      if (out.fallback) addFallback(scope, out.fallback);
       return out;
     };
 
-    await this.deps.store.jobStarted(job, budgetUsd);
     log.info(
-      { tier: tier.tier, budgetUsd, locales: job.locales.map((l) => l.locale), chains: registry.chains },
+      {
+        tier: tier.tier,
+        budgetUsd,
+        ...(priorUsd ? { priorUsd } : {}),
+        locales: job.locales.map((l) => l.locale),
+        chains: registry.chains,
+      },
       "reel job started",
     );
 
     try {
       // 1. product profile — analysed once per source version, then cached (DB or file store)
       const profile = await clock.time("analysis", () =>
-        this.profileFor(source, registry, ctxFor("master"), chain),
+        this.profileFor(source, registry, ctxFor(JOB_SCOPE), chain),
       );
       const memory = new HookMemory(this.tools.cacheDir);
       const jc: JobCtx = {
@@ -265,6 +292,7 @@ export class ReelFactory {
         gate,
         clock,
         fallbacks,
+        addFallback,
         memory,
         jobDir,
         workDir,
@@ -274,14 +302,13 @@ export class ReelFactory {
         ...(opts.signal ? { signal: opts.signal } : {}),
       };
 
-      // 2. existing assets worth reusing (local index; query embeddings only above ECONOMY)
+      // 2. existing assets worth reusing (local index; a query embedding only above ECONOMY, through the
+      //    BudgetGate — it only refines the ranking, so any failure falls back to lexical / tag search)
       const index = new AssetIndex(this.tools.cacheDir);
-      const retriever = new AssetRetriever(index, registry.embedding[0]);
+      const retriever = new AssetRetriever(index);
       const retrieved = await clock.time("retrieval", () =>
-        retriever.retrieveFor(
-          profile,
-          { productModelSha: source.model3d?.sha256 },
-          registry.embedding.length ? ctxFor("master") : undefined,
+        retriever.retrieveFor(profile, { productModelSha: source.model3d?.sha256 }, (text) =>
+          this.queryEmbedding(jc, text),
         ),
       );
       const master = job.locales[0]!;
@@ -305,10 +332,12 @@ export class ReelFactory {
       const arms: (HookStrategy | undefined)[] = job.abHooks.length ? job.abHooks : [undefined];
       const variants: VariantResult[] = [];
       let armA: Arm | null = null;
+      let copiesA: { copy: LocaleCopy; provider: string }[] = [];
 
       for (const [armIndex, hookStrategy] of arms.entries()) {
         const variantKey = String.fromCharCode(65 + armIndex); // A, B, C …
         let arm: Arm;
+        let copies: { copy: LocaleCopy; provider: string }[];
         if (armA && job.abMode === "copy" && hookStrategy) {
           // cheap A/B: same shots, master video, music and SFX — only the hook copy and the spoken hook change
           const rehooked = rehookPlan(armA.plan, hookStrategy, variantKey, hookCtx);
@@ -316,25 +345,49 @@ export class ReelFactory {
             log.warn({ hookStrategy }, "A/B arm skipped: the product's facts do not support this hook");
             continue;
           }
-          arm = { ...armA, variantKey, plan: rehooked };
+          arm = {
+            ...armA,
+            variantKey,
+            scopes: [...armA.scopes, armScope(variantKey)],
+            copyOf: armA.variantKey,
+            plan: rehooked,
+          };
+          // 7a. localizations: arm A's copies with only the re-hooked slots transcreated (the arms differ in
+          //     the hook alone — a clean test, and the transcreation cost of a few lines)
+          copies = await clock.time("transcreation", () =>
+            this.localizeCopies(jc, arm.plan, armScope(variantKey), { base: copiesA, from: armA!.plan }),
+          );
         } else {
           arm = await this.buildArm(jc, { variantKey, hookStrategy, master, retrieved, history, index });
-          armA ??= arm;
+          // 7. localizations of the master copy (transcreation + claim validation)
+          copies = await clock.time("transcreation", () =>
+            this.localizeCopies(jc, arm.plan, armScope(variantKey)),
+          );
+          if (!armA) {
+            armA = arm;
+            copiesA = copies;
+          }
         }
 
-        // 7. localizations of the master copy (transcreation + claim validation)
-        const copies = await clock.time("transcreation", () => this.localizeCopies(jc, arm.plan));
-
         for (const [li, { copy, provider: transcreationProvider }] of copies.entries()) {
-          const localized: ReelPlan = { ...arm.plan, language: copy.locale, market: copy.market, copy };
           let reuseAudio: { path: string; lufs: number; truePeakDb: number } | undefined;
-          let voice: VoiceTrack | undefined;
+          let voice: VoiceTrackResult | undefined;
+          // the primary platform's final render profile (a renormalize fix) travels with its reused mix
+          let carried: Pick<ReelPlan, "render_profile"> | undefined;
           const platforms = [job.platform, ...job.extraPlatforms.filter((p) => p !== job.platform)];
           for (const [pi, pid] of platforms.entries()) {
             const platform = PLATFORM_PROFILES[pid];
+            // built from the CURRENT arm: a QA retry of the primary may have re-rendered the master
+            const base: ReelPlan = {
+              ...arm.plan,
+              language: copy.locale,
+              market: copy.market,
+              copy,
+              ...carried,
+            };
             const out = await this.deliver(jc, {
               arm,
-              plan: { ...localized, platform: pid, cta: { ...localized.cta, style: platform.cta.style } },
+              plan: { ...base, platform: pid, cta: { ...base.cta, style: platform.cta.style } },
               platform,
               primary: pi === 0,
               masterCopy: li === 0,
@@ -351,12 +404,14 @@ export class ReelFactory {
             if (pi === 0 && out.audio.normalised) {
               reuseAudio = out.audio;
               voice = out.voice;
+              carried = { render_profile: out.plan.render_profile };
             }
           }
         }
       }
 
-      const totalApiCostUsd = tracker.spentMicros() / 1e6;
+      const spentUsd = tracker.spentMicros() / 1e6;
+      const totalApiCostUsd = priorUsd + spentUsd;
       const timings = { ...clock.timings };
       const total = Object.values(timings).reduce((a, b) => a + b, 0) || 1;
       const [stage, ms] = Object.entries(timings).sort((a, b) => b[1] - a[1])[0] ?? ["none", 0];
@@ -376,16 +431,44 @@ export class ReelFactory {
         totalApiCostUsd,
         timings,
         bottleneck: { stage, ms, share: ms / total },
-        fallbacks,
+        fallbacks: dedupeFallbacks([...fallbacks.values()].flat()),
         economics,
       };
     } catch (e) {
       await this.deps.store.jobFinished(job.jobId, "FAILED", {
-        totalApiCostUsd: tracker.spentMicros() / 1e6,
+        totalApiCostUsd: priorUsd + tracker.spentMicros() / 1e6,
         timings: clock.timings,
         error: e instanceof Error ? e.message : String(e),
       });
       throw e;
+    }
+  }
+
+  /** one query vector for asset ranking; null (lexical search) when unavailable, over budget or failing */
+  private async queryEmbedding(
+    jc: JobCtx,
+    text: string,
+  ): Promise<{ key: string; values: number[] } | undefined> {
+    const items = [{ id: "query", text }];
+    const ctx = jc.ctxFor(JOB_SCOPE);
+    try {
+      const out = await jc.chain(
+        "embedding",
+        jc.registry.embedding,
+        (p) => p.estimateMicros(items),
+        async (p) => {
+          if (!(await p.available()).ok) throw new Error(`${p.name} unavailable`);
+          const [v] = await p.embed(items, ctx);
+          if (!v) throw new Error(`${p.name} returned no vector`);
+          return { key: `${p.model}@${p.dimensions}`, values: v.vector };
+        },
+        JOB_SCOPE,
+      );
+      return out.result;
+    } catch (e) {
+      if (jc.registry.embedding.length)
+        jc.log.info({ err: e instanceof Error ? e.message : String(e) }, "query embedding skipped");
+      return undefined;
     }
   }
 
@@ -403,6 +486,7 @@ export class ReelFactory {
     },
   ): Promise<Arm> {
     const { job, source, profile, brand, clock, ctxFor, gate, registry, log } = jc;
+    const scope = armScope(a.variantKey);
     // 3. director → decision → master plan (claims validated; the chain falls back on rejected copy)
     const input = directorInput(
       job,
@@ -441,17 +525,14 @@ export class ReelFactory {
     );
 
     // 6. audio bed shared by every locale and platform of the arm: music + SFX
-    const music = await clock.time("music", () => this.music(jc, plan));
+    const music = await clock.time("music", () => this.music(jc, plan, scope));
     const sfx = await clock.time("sfx", () =>
-      buildSfxCues(plan, registry.sfx, ctxFor("master"), {
+      buildSfxCues(plan, registry.sfx, ctxFor(scope), {
         budget: gate,
-        onFallback: (f) => {
-          if (!jc.fallbacks.some((x) => x.capability === f.capability && x.used === f.used))
-            jc.fallbacks.push(f);
-        },
+        onFallback: (f) => jc.addFallback(scope, f),
       }),
     );
-    return { variantKey: a.variantKey, plan, director, gv, clips, masterVideo, music, sfx };
+    return { variantKey: a.variantKey, scopes: [scope], plan, director, gv, clips, masterVideo, music, sfx };
   }
 
   private async visuals(
@@ -460,7 +541,7 @@ export class ReelFactory {
     variantKey: string,
   ): Promise<{ clips: ShotClip[]; masterVideo: MasterVideo }> {
     const produced = await jc.clock.time("blender", () =>
-      produceShotClips(plan, jc.source, plan.render_profile.blender, jc.ctxFor("master"), {
+      produceShotClips(plan, jc.source, plan.render_profile.blender, jc.ctxFor(armScope(variantKey)), {
         emitsLight: jc.profile.traits.emitsLight,
         // one log line per finished shot and every 10th frame (ops can see where a long render is)
         onProgress: (p) => {
@@ -480,7 +561,7 @@ export class ReelFactory {
         workDir: jc.workDir,
         cacheDir: this.tools.cacheDir,
         tracker: jc.tracker,
-        scope: "master",
+        scope: armScope(variantKey),
         ...(jc.signal ? { signal: jc.signal } : {}),
       }),
     );
@@ -500,20 +581,25 @@ export class ReelFactory {
       transcreationProvider: string;
       reuseAudio?: { path: string; lufs: number; truePeakDb: number };
       /** voice of the primary platform pass (same locale copy) */
-      voice?: VoiceTrack;
+      voice?: VoiceTrackResult;
       onRerender: (arm: Arm) => void;
     },
   ): Promise<{
     variant: VariantResult;
+    /** the plan this variant was finally rendered from (after any QA fix) */
+    plan: ReelPlan;
     audio: { path: string; lufs: number; truePeakDb: number; normalised: boolean };
-    voice?: VoiceTrack;
+    voice?: VoiceTrackResult;
   }> {
     const { job, brand, profile, registry, clock, log } = jc;
+    const clockAtStart = { ...clock.timings };
     let arm = a.arm;
     let localized = a.plan;
     const platform = a.platform;
     const locale = localized.copy.locale;
     const scope = `${arm.variantKey}:${locale}:${platform.id}`;
+    // the voice is synthesised once per locale (by the primary platform) and reused by the others
+    const voiceScope = `${arm.variantKey}:${locale}:voice`;
     const ctx = jc.ctxFor(scope);
     const variantId = `${job.jobId}-${arm.variantKey}-${locale}${a.primary ? "" : `-${platform.id}`}`;
     const outVideo = path.join(jc.jobDir, `${variantId}.mp4`);
@@ -527,13 +613,15 @@ export class ReelFactory {
     let served: ServedProviders | null = null;
     let assPath: string | undefined;
     let audio = { path: "", lufs: 0, truePeakDb: 0, normalised: false };
-    let voice: VoiceTrack | undefined = a.voice;
+    let voice: VoiceTrackResult | undefined = a.voice;
+    let voiceBuiltHere = false;
+    let renderedHere = false;
     let reuseAudio = a.reuseAudio;
     const retries: QaReport["retries"] = [];
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       // the voice depends only on the locale copy and timing — reused by every platform via the audio mix
-      if (localized.voiceover.enabled && !voice)
+      if (localized.voiceover.enabled && !voice) {
         voice = await clock.time("voice", () =>
           buildVoiceTrack({
             plan: localized,
@@ -541,12 +629,14 @@ export class ReelFactory {
             persona: brand.voicePersona,
             voiceChain: registry.voice,
             transcriptionChain: registry.transcription,
-            ctx,
+            ctx: jc.ctxFor(voiceScope),
             budget: jc.gate,
           }),
         );
-      if (voice && "issues" in voice && Array.isArray(voice.issues) && voice.issues.length)
-        log.warn({ variantId, issues: voice.issues }, "voice track issues");
+        voiceBuiltHere = true;
+        for (const f of voice.fallbacks) jc.addFallback(voiceScope, f);
+        if (voice.issues.length) log.warn({ variantId, issues: voice.issues }, "voice track issues");
+      }
       const layout = buildTextElements({ plan: localized, brand, platform, measurer });
       const rawCaptions =
         localized.captions.enabled && voice
@@ -556,8 +646,8 @@ export class ReelFactory {
       const captions = rawCaptions
         ? {
             ...rawCaptions,
-            // the spoken hook is already on screen as the hook headline — don't print it twice
-            phrases: withoutHookEcho(rawCaptions.phrases, layout.elements, localized),
+            // the spoken hook / CTA are already on screen as panels — don't print them twice
+            phrases: withoutTextEcho(rawCaptions.phrases, layout.elements, localized, voice?.segments),
             ...(offset ? { box: { ...rawCaptions.box, y: rawCaptions.box.y + offset } } : {}),
           }
         : undefined;
@@ -601,6 +691,14 @@ export class ReelFactory {
         }),
       );
       qa = await this.accuracyChecks(qa, outVideo, arm.clips, profile, localized);
+      const visualHead = registry.visualQa[0];
+      if (visualHead && qa.visualQa && qa.visualQa.provider !== visualHead.name)
+        jc.addFallback(scope, {
+          capability: "visual_qa",
+          wanted: visualHead.name,
+          used: qa.visualQa.provider,
+          reason: "visual QA chain head unavailable, over budget or failed (see the job log)",
+        });
       served = {
         director: arm.director.name,
         directorModel: arm.director.model,
@@ -652,6 +750,7 @@ export class ReelFactory {
         };
         const v = await this.visuals(jc, plan, arm.variantKey);
         arm = { ...arm, plan, ...v };
+        renderedHere = true;
         a.onRerender(arm);
       }
     }
@@ -659,6 +758,16 @@ export class ReelFactory {
     const finalQa: QaReport = { ...qa!, retries: [...qa!.retries, ...retries] };
     const planPath = path.join(jc.jobDir, `${variantId}.plan.json`);
     await fsp.writeFile(planPath, JSON.stringify(localized, null, 1));
+    // marginal wall time of this variant (shared work — studio, music — is in the job's timings)
+    const timings = Object.fromEntries(
+      Object.entries(clock.timings)
+        .map(([k, v]) => [k, v - (clockAtStart[k] ?? 0)] as const)
+        .filter(([, v]) => v > 0),
+    );
+    const own = [scope, ...(voiceBuiltHere ? [voiceScope] : [])];
+    const shared = [JOB_SCOPE, ...arm.scopes, ...(voiceBuiltHere ? [] : [voiceScope])];
+    // the master was made for this variant only by its own QA re-render or as the first reel of a full arm
+    const firstUse = a.primary && a.masterCopy && !arm.copyOf;
     const manifest = buildManifest({
       plan: localized,
       variantId,
@@ -666,15 +775,16 @@ export class ReelFactory {
       tier: job.tier,
       served: served!,
       clips: arm.clips,
-      timings: { ...clock.timings },
+      timings,
       tracker: jc.tracker,
-      scope,
-      fallbacks: jc.fallbacks,
+      scopes: own,
+      sharedScopes: shared,
+      fallbacks: dedupeFallbacks([...shared, ...own].flatMap((sc) => jc.fallbacks.get(sc) ?? [])),
       generativeVideo: arm.gv,
       master: {
         path: arm.masterVideo.path,
         visualHash: arm.masterVideo.visualHash,
-        reused: !a.primary || !a.masterCopy || arm.masterVideo.reused,
+        reused: renderedHere || firstUse ? arm.masterVideo.reused : true,
       },
       qa: finalQa,
       output: {
@@ -714,6 +824,7 @@ export class ReelFactory {
         planPath,
         manifest,
       },
+      plan: localized,
       audio,
       ...(voice ? { voice } : {}),
     };
@@ -748,6 +859,7 @@ export class ReelFactory {
       registry.analysis,
       (p) => p.estimateMicros(source),
       (p) => p.analyze(source, ctx),
+      ctx.scope,
     );
     // only the chain head's profile is cached under its version (a fallback profile is re-tried next time)
     if (out.provider === head) await this.deps.store.putProfile(source.id, out.result, version);
@@ -760,8 +872,15 @@ export class ReelFactory {
     master: { locale: string; market: string },
     input: DirectorInput,
   ): Promise<{ plan: ReelPlan; director: DirectorProvider }> {
-    const platform = PLATFORM_PROFILES[jc.job.platform];
-    const ctx = jc.ctxFor("master");
+    // the shared master must satisfy every platform it is delivered to: the CTA gets the longest minimum
+    const delivered = [jc.job.platform, ...jc.job.extraPlatforms].map((id) => PLATFORM_PROFILES[id]);
+    const head = PLATFORM_PROFILES[jc.job.platform];
+    const platform: PlatformProfile = {
+      ...head,
+      cta: { ...head.cta, minMs: Math.max(...delivered.map((p) => p.cta.minMs)) },
+    };
+    const scope = armScope(variantKey);
+    const ctx = jc.ctxFor(scope);
     const out = await jc.chain(
       "director",
       jc.registry.director,
@@ -796,17 +915,19 @@ export class ReelFactory {
           throw new Error(`director copy rejected: ${blockers.map((i) => i.message).join("; ")}`);
         return plan;
       },
+      scope,
     );
     return { plan: out.result, director: out.provider };
   }
 
-  private async music(jc: JobCtx, plan: ReelPlan): Promise<MusicTrack> {
-    const ctx = jc.ctxFor("master");
+  private async music(jc: JobCtx, plan: ReelPlan, scope: string): Promise<MusicTrack> {
+    const ctx = jc.ctxFor(scope);
     const out = await jc.chain(
       "music",
       jc.registry.music,
       (p) => p.estimateMicros(plan.music.intent),
       (p) => p.compose(plan.music.intent, ctx),
+      scope,
     );
     const r = out.result;
     const fitted =
@@ -833,31 +954,55 @@ export class ReelFactory {
     };
   }
 
+  /**
+   * Localized copies of a plan's master copy. With `reuse` (a copy-mode A/B arm) the copies of the arm it
+   * re-hooks are kept and only the slots whose master text changed are transcreated and merged in, so the
+   * arms differ in the hook alone; every merged copy is claim-validated as a whole.
+   */
   private async localizeCopies(
     jc: JobCtx,
     plan: ReelPlan,
+    scope: string,
+    reuse?: { base: { copy: LocaleCopy; provider: string }[]; from: ReelPlan },
   ): Promise<{ copy: LocaleCopy; provider: string }[]> {
     const targets = jc.job.locales.slice(1);
     const masterOut = { copy: plan.copy, provider: "master" };
     if (!targets.length) return [masterOut];
+    const baseFor = (locale: string) => reuse?.base.find((b) => b.copy.locale === locale);
+    const partial = Boolean(reuse) && targets.every((t) => baseFor(t.locale));
+    const changed = partial
+      ? Object.entries(plan.copy.slots).filter(
+          ([id, slot]) => stableStringify(reuse!.from.copy.slots[id]) !== stableStringify(slot),
+        )
+      : Object.entries(plan.copy.slots);
+    if (partial && !changed.length) return [masterOut, ...targets.map((t) => baseFor(t.locale)!)];
+    const master: LocaleCopy = { ...plan.copy, slots: Object.fromEntries(changed) };
     const req = {
-      master: plan.copy,
+      master,
       targets,
       product: jc.profile,
       productNames: jc.source.names,
       facts: jc.source.facts.map((f) => ({ id: f.id, kind: f.kind, text: f.text })),
       sourceFacts: jc.source.facts,
       brand: jc.brand,
-      limits: slotLimits(plan.copy),
+      limits: slotLimits(master),
       hookStrategy: plan.metadata.hookStrategy,
     };
-    const ctx = jc.ctxFor("master");
+    const ctx = jc.ctxFor(scope);
     const out = await jc.chain(
       "transcreation",
       jc.registry.transcreation,
       (p: TranscreationProvider) => p.estimateMicros(req),
       async (p: TranscreationProvider) => {
-        const copies = await p.transcreate(req, ctx);
+        const copies = (await p.transcreate(req, ctx)).map((c): LocaleCopy => {
+          const base = partial ? baseFor(c.locale)?.copy : undefined;
+          if (!base) return c;
+          // a changed slot the transcreator dropped must not fall back to the other arm's line
+          const slots = Object.fromEntries(
+            Object.entries(base.slots).filter(([id]) => !changed.some(([cid]) => cid === id)),
+          );
+          return { ...base, slots: { ...slots, ...c.slots } };
+        });
         for (const c of copies) {
           const blockers = validateCopy(c, jc.source, jc.brand, jc.profile).filter(
             (i) => i.severity === "blocker",
@@ -867,6 +1012,7 @@ export class ReelFactory {
         }
         return copies;
       },
+      scope,
     );
     return [masterOut, ...out.result.map((copy) => ({ copy, provider: out.provider.name }))];
   }
@@ -898,13 +1044,13 @@ export class ReelFactory {
       frame: { width: W, height: H },
     });
     const check = { id: "product_colors", passed: res.passed, value: res, note: res.note };
-    return {
-      ...qa,
-      checks: [...qa.checks, check],
-      issues: res.passed
-        ? qa.issues
-        : [...qa.issues, { code: "product_color_mismatch", severity: "major", message: res.note }],
-    };
+    if (res.passed) return { ...qa, checks: [...qa.checks, check] };
+    const issues: QaReport["issues"] = [
+      ...qa.issues,
+      { code: "product_color_mismatch", severity: "major", message: res.note },
+    ];
+    // a reel that misrepresents the product's colours must not keep the score it had without the check
+    return { ...qa, ...scoreReport(issues, qa.visualQa), checks: [...qa.checks, check], issues };
   }
 
   /** studio renders of this exact 3D model become reusable assets for later jobs */
@@ -960,25 +1106,59 @@ export function unitEconomics(a: {
   };
 }
 
-/** Caption phrases spoken while the on-screen hook shows the same line are dropped (no double text). */
-export function withoutHookEcho<P extends { startMs: number; endMs: number }>(
+const echoTokens = (x: string) =>
+  x
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N} ]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+/** the spoken line says what the panel shows (≥ 75 % of the panel's words, at most 3 words more) */
+export function echoes(spoken: string, shown: string): boolean {
+  const said = new Set(echoTokens(spoken));
+  const panel = echoTokens(shown);
+  if (!panel.length || said.size > panel.length + 3) return false;
+  return panel.filter((w) => said.has(w)).length / panel.length >= 0.75;
+}
+
+/**
+ * Caption phrases that only repeat an on-screen panel are dropped (no double text): the spoken hook while the
+ * hook headline shows, the spoken CTA while the CTA panel shows ("Link znajdziesz w bio" under "Link w bio").
+ * A phrase goes only when most of it lies inside both the panel's window and its own voice segment.
+ */
+export function withoutTextEcho<P extends { startMs: number; endMs: number }>(
   phrases: readonly P[],
   texts: readonly { kind: string; startMs: number; endMs: number }[],
   plan: Pick<ReelPlan, "copy">,
+  segments: readonly { slot: string; startMs: number; endMs: number }[] = [],
 ): P[] {
-  const hook = texts.find((t) => t.kind === "hook");
-  const spoken = Object.entries(plan.copy.slots).find(([id]) => /^voice\.\d+\.hook$/.test(id))?.[1]?.text;
-  const shown = plan.copy.slots.hook?.text;
-  const norm = (x: string) =>
-    x
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N} ]/gu, "")
-      .trim();
-  if (!hook || !spoken || !shown || norm(spoken) !== norm(shown)) return [...phrases];
+  const inside = (p: P, w: { startMs: number; endMs: number }) =>
+    (Math.min(p.endMs, w.endMs) - Math.max(p.startMs, w.startMs)) / Math.max(1, p.endMs - p.startMs) > 0.5;
+  const windows: {
+    panel: { startMs: number; endMs: number };
+    segment?: { startMs: number; endMs: number };
+  }[] = [];
+  for (const kind of ["hook", "cta"] as const) {
+    const panel = texts.find((t) => t.kind === kind);
+    const spoken = Object.entries(plan.copy.slots).find(([id]) =>
+      new RegExp(`^voice\\.\\d+\\.${kind}$`).test(id),
+    );
+    const shown = plan.copy.slots[kind]?.text;
+    if (!panel || !spoken || !shown || !echoes(spoken[1].text, shown)) continue;
+    const segment = segments.find((s) => s.slot === spoken[0]);
+    windows.push({ panel, ...(segment ? { segment } : {}) });
+  }
   return phrases.filter(
-    (p) =>
-      !(p.startMs < hook.endMs && (Math.min(p.endMs, hook.endMs) - p.startMs) / (p.endMs - p.startMs) > 0.5),
+    (p) => !windows.some((w) => inside(p, w.panel) && (!w.segment || inside(p, w.segment))),
   );
+}
+
+function dedupeFallbacks(list: readonly FallbackRecord[]): FallbackRecord[] {
+  const out: FallbackRecord[] = [];
+  for (const f of list)
+    if (!out.some((x) => x.capability === f.capability && x.wanted === f.wanted && x.used === f.used))
+      out.push(f);
+  return out;
 }
 
 function visualPart(plan: ReelPlan): unknown {

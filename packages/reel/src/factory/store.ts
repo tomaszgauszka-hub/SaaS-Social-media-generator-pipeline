@@ -12,7 +12,11 @@ import type { ProductProfile } from "../contracts/product.ts";
 export type ReelJobState = "QUEUED" | "RUNNING" | "DONE" | "FAILED" | "BUDGET_BLOCKED";
 
 export interface ReelStore {
-  jobStarted(job: ReelJob, maxApiCostUsd: number): Promise<void>;
+  /**
+   * Marks the job RUNNING. Returns the API spend already recorded by earlier unfinished attempts of the same job
+   * (a worker retry) — the factory continues on the budget they left instead of starting a fresh one.
+   */
+  jobStarted(job: ReelJob, maxApiCostUsd: number): Promise<{ priorApiCostUsd: number }>;
   jobFinished(
     jobId: string,
     state: ReelJobState,
@@ -34,13 +38,19 @@ export class FileReelStore implements ReelStore {
     await fsp.writeFile(p, JSON.stringify(value, null, 1));
   }
 
-  async jobStarted(job: ReelJob, maxApiCostUsd: number): Promise<void> {
+  async jobStarted(job: ReelJob, maxApiCostUsd: number): Promise<{ priorApiCostUsd: number }> {
+    const prev = (await fsp
+      .readFile(path.join(this.dir, job.jobId, "job.json"), "utf8")
+      .then(JSON.parse, () => null)) as { state?: string; totalApiCostUsd?: number } | null;
+    const priorApiCostUsd = prev && prev.state !== "DONE" ? Number(prev.totalApiCostUsd ?? 0) || 0 : 0;
     await this.write(path.join(job.jobId, "job.json"), {
       job,
       maxApiCostUsd,
       state: "RUNNING",
+      totalApiCostUsd: priorApiCostUsd,
       startedAt: new Date().toISOString(),
     });
+    return { priorApiCostUsd };
   }
 
   async jobFinished(

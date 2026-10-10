@@ -43,9 +43,10 @@ export class CostTracker implements CostRecorder {
     this.computeEntries.push(ComputeEntry.parse(entry));
   }
 
-  /** API spend so far (micro-USD), optionally for one scope */
-  spentMicros(scope?: string): number {
-    return this.entries.filter((e) => !scope || e.scope === scope).reduce((s, e) => s + e.costMicros, 0);
+  /** API spend so far (micro-USD), optionally for some scopes */
+  spentMicros(scope?: string | readonly string[]): number {
+    const scopes = scope === undefined ? null : new Set(typeof scope === "string" ? [scope] : scope);
+    return this.entries.filter((e) => !scopes || scopes.has(e.scope)).reduce((s, e) => s + e.costMicros, 0);
   }
 
   /** reserve before a paid call so concurrent calls cannot jointly overspend; returns a release function */
@@ -62,9 +63,11 @@ export class CostTracker implements CostRecorder {
     return this.spentMicros() + this.reservedMicros;
   }
 
-  breakdown(scope?: string): CostBreakdown {
-    const entries = this.entries.filter((e) => !scope || e.scope === scope || e.scope === "master");
-    const compute = this.computeEntries.filter((e) => !scope || e.scope === scope || e.scope === "master");
+  /** cost of exactly these scopes (all scopes when omitted) */
+  breakdown(scope?: string | readonly string[]): CostBreakdown {
+    const scopes = scope === undefined ? null : new Set(typeof scope === "string" ? [scope] : scope);
+    const entries = this.entries.filter((e) => !scopes || scopes.has(e.scope));
+    const compute = this.computeEntries.filter((e) => !scopes || scopes.has(e.scope));
     const byCategory = Object.fromEntries(COST_CATEGORIES.map((c) => [c, 0])) as Record<CostCategory, number>;
     for (const e of entries) byCategory[e.category ?? "llm"] += e.costMicros;
     const sumStage = (stage: ComputeEntry["stage"]) =>

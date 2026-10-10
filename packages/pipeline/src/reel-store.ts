@@ -23,7 +23,14 @@ export class PrismaReelStore implements ReelStore {
     private readonly workspaceId: string | null,
   ) {}
 
-  async jobStarted(job: ReelJob, maxApiCostUsd: number): Promise<void> {
+  async jobStarted(job: ReelJob, maxApiCostUsd: number): Promise<{ priorApiCostUsd: number }> {
+    // a retry of an unfinished attempt (RUNNING / FAILED) carries its recorded spend; a re-run of a DONE job
+    // is a new order with a fresh budget
+    const prev = await this.db.reelJobRecord.findUnique({
+      where: { jobId: job.jobId },
+      select: { status: true, totalApiCostUsd: true },
+    });
+    const priorApiCostUsd = prev && prev.status !== "DONE" ? Number(prev.totalApiCostUsd) || 0 : 0;
     const data = {
       brandKey: job.brandId,
       productKey: job.productId,
@@ -34,12 +41,14 @@ export class PrismaReelStore implements ReelStore {
       request: json(job),
       error: null,
       finishedAt: null,
+      totalApiCostUsd: priorApiCostUsd,
     };
     await this.db.reelJobRecord.upsert({
       where: { jobId: job.jobId },
       create: { jobId: job.jobId, workspaceId: this.workspaceId, ...data },
       update: data,
     });
+    return { priorApiCostUsd };
   }
 
   async jobFinished(

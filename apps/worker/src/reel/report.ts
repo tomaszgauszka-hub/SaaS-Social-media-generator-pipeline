@@ -18,11 +18,11 @@ export function renderReelReport(r: ProduceResult, wallMs: number, google: boole
       ? `- commission $${r.economics.commissionPerSaleUsd!.toFixed(2)} per sale → pays back after **${r.economics.breakEvenSales} sale(s)**`
       : "- payback: pass --commission-rate or --commission-usd to estimate break-even sales",
     "",
-    "| Variant | Locale | Platform | Duration | QA | Passed | Master reused | API cost | Director | Music | Voice | Video |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| Variant | Locale | Platform | Duration | QA | Passed | Master reused | Marginal API cost | Marginal time | Director | Music | Voice | Video |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ...r.variants.map((v) => {
       const m = v.manifest;
-      return `| ${v.variantKey} | ${v.locale} | ${v.platform} | ${s(m.durationMs)} | ${Math.round(m.qa.score)} | ${m.qa.passed ? "yes" : "no"} | ${m.masterVideo.reused ? "yes" : "no"} | $${m.totalApiCostUsd.toFixed(4)} | ${m.providers.director} | ${m.providers.musicProvider} | ${m.providers.voiceProvider} | ${path.basename(v.video)} |`;
+      return `| ${v.variantKey} | ${v.locale} | ${v.platform} | ${s(m.durationMs)} | ${Math.round(m.qa.score)} | ${m.qa.passed ? "yes" : "no"} | ${m.masterVideo.reused ? "yes" : "no"} | $${m.totalApiCostUsd.toFixed(4)} | ${s(m.renderTimeMs)} | ${m.providers.director} | ${m.providers.musicProvider} | ${m.providers.voiceProvider} | ${path.basename(v.video)} |`;
     }),
     "",
     "## Stage timings",

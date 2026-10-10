@@ -30,7 +30,9 @@ export function buildManifest(opts: {
   clips: ShotClip[];
   timings: Record<string, number>;
   tracker: CostTracker;
-  scope: string;
+  /** the variant's own cost scopes + the scopes of the work it shares with sibling variants */
+  scopes: readonly string[];
+  sharedScopes: readonly string[];
   fallbacks: FallbackRecord[];
   generativeVideo: GenerativeVideoDecision[];
   master: { path: string; visualHash: string; reused: boolean };
@@ -40,7 +42,7 @@ export function buildManifest(opts: {
   createdAt: string;
 }): ReelManifest {
   const { plan, tracker } = opts;
-  const cost = tracker.breakdown(opts.scope);
+  const cost = tracker.breakdown(opts.scopes);
   const clipById = new Map(opts.clips.map((c) => [c.shotId, c]));
   return ReelManifest.parse({
     manifestVersion: "reel-manifest/1",
@@ -86,6 +88,7 @@ export function buildManifest(opts: {
     tokens: cost.tokens,
     cost,
     totalApiCostUsd: cost.totalApiMicros / 1e6,
+    sharedApiCostUsd: tracker.spentMicros(opts.sharedScopes) / 1e6,
     fallbacks: opts.fallbacks,
     generativeVideo: opts.generativeVideo.map((d) => ({
       shotId: d.shotId,

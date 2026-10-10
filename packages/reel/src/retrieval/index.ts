@@ -2,7 +2,6 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { textSimilarity } from "@cre/shared";
-import type { CallContext, EmbeddingProvider } from "../capabilities/types.ts";
 import type { ProductProfile } from "../contracts/product.ts";
 
 /**
@@ -124,15 +123,16 @@ export interface Retrieved {
 }
 
 export class AssetRetriever {
-  constructor(
-    private readonly index: AssetIndex,
-    private readonly embedding?: EmbeddingProvider,
-  ) {}
+  constructor(private readonly index: AssetIndex) {}
 
+  /**
+   * `embedQuery` (optional) returns a query vector — the caller runs it through its capability chain and
+   * budget gate; undefined (no provider, over budget, failed) means lexical / tag search only.
+   */
   async retrieveFor(
     profile: ProductProfile,
     needs: { productModelSha?: string | undefined; limit?: number } = {},
-    ctx?: CallContext,
+    embedQuery?: (text: string) => Promise<SearchQuery["vector"]>,
   ): Promise<Retrieved> {
     const text = [profile.shortName, profile.category, ...profile.visual_features].join(" ");
     const tags = [
@@ -140,12 +140,7 @@ export class AssetRetriever {
       profile.productId,
       ...profile.visual_features.flatMap((v) => v.split(/\s+/)),
     ];
-    let vector: SearchQuery["vector"];
-    // query embeddings only when a provider is configured, available and the caller passes a cost context
-    if (this.embedding && ctx && (await this.embedding.available()).ok) {
-      const [v] = await this.embedding.embed([{ id: "query", text }], ctx);
-      if (v) vector = { key: `${this.embedding.model}@${this.embedding.dimensions}`, values: v.vector };
-    }
+    const vector = embedQuery ? await embedQuery(text) : undefined;
     const renders = needs.productModelSha
       ? this.index.search({
           kinds: ["render", "plate", "sequence"],
