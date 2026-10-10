@@ -15,7 +15,7 @@ import { decodeRaw } from "../util/raw.ts";
  * of the Gemini analyzer and good enough on its own for structured catalog data.
  */
 
-export const DETERMINISTIC_ANALYZER_VERSION = "deterministic-analyzer/1";
+export const DETERMINISTIC_ANALYZER_VERSION = "deterministic-analyzer/2";
 
 export function sourceHash(source: ProductSource): string {
   return sha256Hex(stableStringify(source)).slice(0, 24);
@@ -248,11 +248,16 @@ export class DeterministicProductAnalyzer implements ProductAnalyzer {
 
     const main = source.images.find((i) => i.role === "main") ?? source.images[0];
     const palette = main ? await catalogPalette(main.path).catch(() => []) : [];
-    // "Rivet Table Lamp": brand + product type when the source has them, else the cleaned-up name
+    // "Rivet Table Lamp": brand + the catalog's own product noun (the leaf of its category path, singular — a
+    // style word such as "Contemporary" is never a product name), else brand + type, else the cleaned-up name
     const type = facts.find((f) => f.id === "type.en-US")?.text;
+    const leaf = source.categoryPath
+      ? source.category.replace(/ies$/i, "y").replace(/(?<!s)s$/i, "")
+      : undefined;
+    const noun = leaf && classifyCategory({ category: leaf, names: {} }).from === "category" ? leaf : type;
     const shortName = (
-      type && source.brand
-        ? `${source.brand} ${type}`
+      noun && source.brand
+        ? `${source.brand} ${noun}`
         : (source.names["en-US"] ?? Object.values(source.names)[0] ?? source.id)
             .replace(/^amazon brand\s*[–-]\s*/i, "")
             .split(/\s+[-–]\s+/)[0]!

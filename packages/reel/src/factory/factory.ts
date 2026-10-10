@@ -32,6 +32,7 @@ import type {
   ProviderBase,
   TranscreationProvider,
 } from "../capabilities/types.ts";
+import { DETERMINISTIC_ANALYZER_VERSION } from "../analysis/index.ts";
 import { checkRenderedColors, validateCopy } from "../claims/index.ts";
 import { composeLocalized, composeMaster, type MasterVideo } from "../composer/index.ts";
 import {
@@ -881,7 +882,8 @@ export class ReelFactory {
   ): Promise<ProductProfile> {
     const sourceHash = sha256Hex(stableStringify(source)).slice(0, 24);
     const head = registry.analysis[0]!;
-    const version = `${head.name}:${head.model}`;
+    // category / light-source rules are shared code (deterministic.ts): their version is part of every key
+    const version = `${head.name}:${head.model}:${DETERMINISTIC_ANALYZER_VERSION}`;
     const cached = await this.deps.store.getProfile(source.id, sourceHash, version);
     if (cached) {
       ctx.tracker.record({

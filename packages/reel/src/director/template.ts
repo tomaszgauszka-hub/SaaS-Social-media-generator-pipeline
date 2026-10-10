@@ -207,9 +207,20 @@ export interface CopyPick {
 
 /** The claim content per role, in priority order (lamp-specific concepts first). */
 const ROLE_CONCEPTS: Partial<Record<SalesRole, string[]>> = {
-  BENEFIT: ["materials_walnut_brass_fabric", "mid_century_style", "room_standout", "led_bulb_included"],
+  BENEFIT: [
+    "materials_walnut_brass_fabric",
+    "ceramic_nickel_linen",
+    "marble_brass",
+    "resin_metal_linen",
+    "mid_century_style",
+    "room_standout",
+    "led_bulb_included",
+  ],
   PROOF: [
     "curved_brass_stem",
+    "geometric_cutouts",
+    "wood_grain_finish",
+    "marble_brass",
     "led_work_light",
     "keyless_chuck",
     "mid_century_style",
