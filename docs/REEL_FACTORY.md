@@ -117,7 +117,18 @@ proof). Hook outcomes are stored for later analysis; there is no self-"learning"
 - `validateCopy` rejects unknown fact ids, numbers that do not match a fact (with unit conversions), price /
   promotion / warranty / certificate wording without a fact of that kind, forbidden phrases, absolute claims
   and feature words the facts do not contain (e.g. "dimmable" for a lamp whose source does not say so).
-- `checkRenderedColors` compares the rendered product region with the catalog palette.
+  Copy a **model** wrote gets no benefit of the doubt: an invented number (also unit-less, e.g. "3 brightness
+  levels" or a "5-year" warranty citing a 2-year fact) or a colour the facts do not contain is a blocker.
+- Never supported, in any language: fabricated social proof and first-person testimonials ("loved by thousands",
+  "I've used it every night", „Klienci kochają…"), free shipping and urgency / scarcity ("today only", „ostatnie
+  sztuki") without a promotion fact, and a rating claim without a real rating fact (kind `rating` or a star /
+  out-of-5 value ≤ 5 — never an energy rating or the word "review" in assembly instructions).
+- The **disclosure** is legal text written by code (`disclosureFor(brand, locale)`): it is never sent to a
+  transcreation model, and any copy whose disclosure differs from the brand's text is rejected.
+- The category comes from the catalog structure first (leaf, then path upwards), whole words only, colour and
+  weight phrases ignored — a "Light Grey" sofa is not a lamp; only products with evidence of a light source get
+  an interior light and light-up hooks.
+- `checkRenderedColors` compares the rendered product region with the catalog palette; a mismatch re-scores QA.
 
 ## Fallback matrix
 
@@ -161,8 +172,14 @@ keyframes are computed by a pure Python module. On CPU the studio is the bottlen
 - **sequence** — real frames for object motion (turntable, orbit, drop) at a reduced frame rate,
   interpolated to 30 fps.
 
-Every shot is cached by product model hash + studio version + shot spec + profile, so localized and A/B
-variants never re-render.
+Every shot is cached by product model hash + studio version + renderer identity (bpy / Blender version and
+build hash) + shot spec + profile, so localized and A/B variants never re-render. Emission is never invented: only
+authored emissive materials are switched; an opaque part named "shade" stays as it is. A slide's sideways travel
+is reserved in the framing, so wide products are never cut. Shots finished before a crash, kill or timeout are
+installed into the cache, so a retry resumes; the host-wide Blender lock records pid + host + PID namespace +
+boot id + process start time with a heartbeat, and reclaims stale or PID-reused locks atomically. In the worker,
+a QUALITY plan whose estimated Blender time exceeds 60 % of the job timeout is rendered with FAST (recorded as a
+fallback); QUALITY sequences render at 15 fps and are interpolated.
 
 ## ReelComposer (FFmpeg)
 
@@ -205,9 +222,20 @@ accuracy of the rendered product against the catalog palette. Visual QA runs on 
 local FFmpeg statistics (exposure, flat product region, edge density). Score = 100 − 40 / 12 / 4 per blocker /
 major / minor issue, blended 75/25 with the visual score; passed = no blocker and score ≥ 80.
 
+Also: text panels against the product track (`text_over_product` — the layout first refits a panel into the room
+above the product when a readable size exists), the drawn logo box against every text panel
+(`logo_text_overlap`; top logos are scaled to stay above the text band), the voice builder's own findings
+(`voice_overflow` blocker when words would be cut, `voice_mixed` when one reel would change speaker). libass draws
+text at the em size the layout measured (`\fs` × the font's cell ratio). QA frames are kept per platform.
+
 Fix codes drive `planRetry` (no model): `reframe:<shot>:±fill`, `reposition_captions`, `extend_cta:<ms>` (time
 taken from the previous shot) and `renormalize` (more true-peak headroom). Only what changed is re-rendered
 (Blender shot cache, master cache).
+
+Voice: Piper is deterministic (`noise_w 0`), so a line always gives the same take; pace fitting keeps a faster
+take only when it is really shorter, otherwise time-stretches locally — a paid voice is never bought twice for a
+pace change (ElevenLabs takes are cached per text and stretched locally). A paid voice is used only when the
+budget covers every line it would speak, so a reel never changes speaker halfway.
 
 ## Return on cost
 
@@ -258,6 +286,9 @@ job ids.
 - Everything a model may choose is a whitelisted id or a bounded number (`contracts/ids.ts`).
 - Caption / overlay text is sanitised for libass; SSML is escaped.
 - Downloads are restricted to known hosts; API keys are never logged.
+- Job and product ids are safe file-name ids (`SafeId`); job output / work dirs are asserted inside their roots;
+  product JSON media paths cannot leave the product's directory; payload paths stay inside `.data/products` and
+  `assets/brands`.
 
 ## Development vs. production
 
