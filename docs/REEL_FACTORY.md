@@ -185,8 +185,10 @@ fallback); QUALITY sequences render at 15 fps and are interpolated.
 Framing for sales text: the HOOK and CTA shots are framed lower (`params.centerY`, product top ≈ 557 / 614 px) so
 the headline and the CTA stack never cover the product on any platform. Close-ups measure the product's width
 profile from area-weighted surface samples: a band that is mostly thin (a lamp rod) moves to the nearest wide run
-(the marble cube, the shade), the focus sits on the near surface and the aperture stops down to f/8 — a detail,
-never an abstract blur.
+(the marble cube, the shade), a small part is framed whole with context (the frame covers ≥ 22 % of the product
+height), the focus sits on the near surface and the aperture stops down to f/8 — a detail, never an abstract blur.
+The template director reserves the product's visual detail for the proof close-up first; when the benefit line
+has no concept of its own it speaks that detail, so the voice and the close-up say the same thing.
 
 ## ReelComposer (FFmpeg)
 
