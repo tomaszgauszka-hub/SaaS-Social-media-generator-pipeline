@@ -67,7 +67,7 @@ import {
 } from "../director/index.ts";
 import { planRetry, runReelQa, scoreReport } from "../qa/index.ts";
 import { AssetIndex, AssetRetriever, type Retrieved } from "../retrieval/index.ts";
-import { produceShotClips } from "../studio/index.ts";
+import { produceShotClips, sequenceRenderFps } from "../studio/index.ts";
 import { resolveReelTools, type ReelTools } from "../util/tools.ts";
 import {
   applyGenerativeVideoDecisions,
@@ -195,6 +195,7 @@ interface JobCtx {
   log: Logger;
   chain: Chain;
   ctxFor: (scope: string) => CallContext;
+  studioBudgetMs?: number;
   signal?: AbortSignal;
 }
 
@@ -207,7 +208,14 @@ export class ReelFactory {
     this.now = deps.now ?? (() => new Date());
   }
 
-  async produce(input: ProduceInput, opts: { signal?: AbortSignal } = {}): Promise<ProduceResult> {
+  /**
+   * `studioBudgetMs` — Blender time one job may spend (the worker passes a share of its job timeout; the CLI
+   * none): a QUALITY plan whose estimated studio time exceeds it is rendered with FAST, recorded as a fallback.
+   */
+  async produce(
+    input: ProduceInput,
+    opts: { signal?: AbortSignal; studioBudgetMs?: number } = {},
+  ): Promise<ProduceResult> {
     const started = Date.now();
     const job = ReelJob.parse(input.job);
     const { source, brand } = input;
@@ -225,8 +233,8 @@ export class ReelFactory {
       fallbacks.set(scope, list);
     };
     const log = this.deps.logger.child({ jobId: job.jobId, productId: job.productId });
-    const jobDir = path.join(this.tools.outputDir, job.jobId);
-    const workDir = path.join(this.tools.workDir, "reel", job.jobId);
+    const jobDir = inside(this.tools.outputDir, job.jobId);
+    const workDir = inside(path.join(this.tools.workDir, "reel"), job.jobId);
     await fsp.mkdir(jobDir, { recursive: true });
     await fsp.mkdir(workDir, { recursive: true });
     const ctxFor = (scope: string): CallContext => ({
@@ -299,6 +307,7 @@ export class ReelFactory {
         log,
         chain,
         ctxFor,
+        ...(opts.studioBudgetMs ? { studioBudgetMs: opts.studioBudgetMs } : {}),
         ...(opts.signal ? { signal: opts.signal } : {}),
       };
 
@@ -343,6 +352,17 @@ export class ReelFactory {
           const rehooked = rehookPlan(armA.plan, hookStrategy, variantKey, hookCtx);
           if (!rehooked) {
             log.warn({ hookStrategy }, "A/B arm skipped: the product's facts do not support this hook");
+            continue;
+          }
+          // the re-hooked master copy is new copy: it passes the same claim gate as a directed plan
+          const blockers = validateCopy(rehooked.copy, source, brand, profile).filter(
+            (i) => i.severity === "blocker",
+          );
+          if (blockers.length) {
+            log.warn(
+              { hookStrategy, blockers: blockers.map((b) => b.message) },
+              "A/B arm skipped: its hook copy fails claim validation",
+            );
             continue;
           }
           arm = {
@@ -516,7 +536,7 @@ export class ReelFactory {
         : 0,
       specialShots: new Set<string>(),
     });
-    const plan = applyGenerativeVideoDecisions(basePlan, gv);
+    const plan = this.fitStudioBudget(jc, applyGenerativeVideoDecisions(basePlan, gv), scope);
 
     // 5. visuals: Blender shots (cached per shot spec) → master video
     const { clips, masterVideo } = await this.visuals(jc, plan, a.variantKey);
@@ -533,6 +553,18 @@ export class ReelFactory {
       }),
     );
     return { variantKey: a.variantKey, scopes: [scope], plan, director, gv, clips, masterVideo, music, sfx };
+  }
+
+  /** A QUALITY plan the job's Blender budget cannot render is rendered with FAST (and says so). */
+  private fitStudioBudget(jc: JobCtx, plan: ReelPlan, scope: string): ReelPlan {
+    const profile = plan.render_profile.blender;
+    if (!jc.studioBudgetMs || profile !== "QUALITY") return plan;
+    const estimate = estimateStudioMs(plan, profile);
+    if (estimate <= jc.studioBudgetMs) return plan;
+    const reason = `estimated QUALITY studio time ${Math.round(estimate / 60_000)} min exceeds the job's Blender budget of ${Math.round(jc.studioBudgetMs / 60_000)} min`;
+    jc.log.warn({ estimateMs: estimate, budgetMs: jc.studioBudgetMs }, reason);
+    jc.addFallback(scope, { capability: "render_3d", wanted: "QUALITY", used: "FAST", reason });
+    return { ...plan, render_profile: { ...plan.render_profile, blender: "FAST" } };
   }
 
   private async visuals(
@@ -552,6 +584,13 @@ export class ReelFactory {
     );
     if (produced.skipped.length)
       jc.log.warn({ skipped: produced.skipped }, "shots not rendered by the studio");
+    for (const sh of produced.shots.filter((x) => x.fallbackTechnique))
+      jc.addFallback(armScope(variantKey), {
+        capability: "render_3d",
+        wanted: sh.technique,
+        used: sh.fallbackTechnique!,
+        reason: `${sh.shotId}: the product has no light of its own — rendered as one plate`,
+      });
     const clips = produced.clips;
     const masterVideo = await jc.clock.time("ffmpeg_master", () =>
       composeMaster({
@@ -637,7 +676,8 @@ export class ReelFactory {
         for (const f of voice.fallbacks) jc.addFallback(voiceScope, f);
         if (voice.issues.length) log.warn({ variantId, issues: voice.issues }, "voice track issues");
       }
-      const layout = buildTextElements({ plan: localized, brand, platform, measurer });
+      // text panels avoid the product where a readable fit exists (product track of the shared master)
+      const layout = buildTextElements({ plan: localized, brand, platform, measurer, clips: arm.clips });
       const rawCaptions =
         localized.captions.enabled && voice
           ? buildCaptionTrack({ voice, plan: localized, platform, brand, measurer })
@@ -685,6 +725,7 @@ export class ReelFactory {
           ...(voice ? { voice } : {}),
           brand,
           logoExpected: Boolean(brand.logo),
+          ...(composed.logoBox ? { logoBox: composed.logoBox } : {}),
           visualQa: registry.visualQa,
           budget: jc.gate,
           ctx,
@@ -967,6 +1008,11 @@ export class ReelFactory {
   ): Promise<{ copy: LocaleCopy; provider: string }[]> {
     const targets = jc.job.locales.slice(1);
     const masterOut = { copy: plan.copy, provider: "master" };
+    const masterBlockers = validateCopy(plan.copy, jc.source, jc.brand, jc.profile).filter(
+      (i) => i.severity === "blocker",
+    );
+    if (masterBlockers.length)
+      throw new Error(`master copy rejected: ${masterBlockers.map((i) => i.message).join("; ")}`);
     if (!targets.length) return [masterOut];
     const baseFor = (locale: string) => reuse?.base.find((b) => b.copy.locale === locale);
     const partial = Boolean(reuse) && targets.every((t) => baseFor(t.locale));
@@ -1151,6 +1197,33 @@ export function withoutTextEcho<P extends { startMs: number; endMs: number }>(
   return phrases.filter(
     (p) => !windows.some((w) => inside(p, w.panel) && (!w.segment || inside(p, w.segment))),
   );
+}
+
+/** `root/<id>` — refuses an id that would leave the root (ids are validated upstream; this is the backstop) */
+function inside(root: string, id: string): string {
+  const base = path.resolve(root);
+  const dir = path.resolve(base, id);
+  if (!dir.startsWith(`${base}${path.sep}`)) throw new Error(`job id leaves ${root}: ${id}`);
+  return dir;
+}
+
+/** Worst-case Blender wall time of a plan without cache hits (4 vCPU measurements; QUALITY extrapolated). */
+const STUDIO_MS: Record<ReelPlan["render_profile"]["blender"], { plate: number; frame: number }> = {
+  FAST: { plate: 25_000, frame: 12_000 },
+  QUALITY: { plate: 300_000, frame: 200_000 },
+};
+
+export function estimateStudioMs(
+  plan: Pick<ReelPlan, "shots">,
+  profile: ReelPlan["render_profile"]["blender"],
+): number {
+  const ms = STUDIO_MS[profile];
+  return plan.shots.reduce((sum, sh) => {
+    if (sh.source !== "blender") return sum;
+    if (sh.technique === "sequence")
+      return sum + Math.ceil((sh.durationMs / 1000) * sequenceRenderFps(sh.preset, profile)) * ms.frame;
+    return sum + (sh.technique === "relight" ? 2 : 1) * ms.plate;
+  }, 0);
 }
 
 function dedupeFallbacks(list: readonly FallbackRecord[]): FallbackRecord[] {

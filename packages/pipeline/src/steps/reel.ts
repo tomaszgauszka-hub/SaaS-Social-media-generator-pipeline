@@ -1,5 +1,5 @@
 import path from "node:path";
-import { resolveFromRoot } from "@cre/config";
+import { JOB_DEFAULTS, resolveFromRoot } from "@cre/config";
 import { enqueueJob } from "@cre/core";
 import type { DbClient } from "@cre/db";
 import { createGoogleAI } from "@cre/providers";
@@ -49,7 +49,13 @@ export async function reelProduceHandler(exec: JobExecution): Promise<Record<str
     logger: exec.log,
     googleAI,
   });
-  const result = await factory.produce({ job, source, brand }, { signal: exec.signal });
+  // Blender may use 60 % of the job timeout; a QUALITY plan that cannot fit is rendered with FAST instead of
+  // being killed at the timeout (and re-rendered from zero by the retry)
+  const timeoutMs = JOB_DEFAULTS["reel.produce"]?.timeoutMs ?? 3_600_000;
+  const result = await factory.produce(
+    { job, source, brand },
+    { signal: exec.signal, studioBudgetMs: Math.round(timeoutMs * 0.6) },
+  );
   return {
     jobId: result.jobId,
     totalApiCostUsd: result.totalApiCostUsd,

@@ -15,6 +15,7 @@ import {
   technicalRules,
   textRules,
   toPx,
+  voiceRules,
   type TechMeasure,
 } from "./checks.ts";
 import { planRetry } from "./retry.ts";
@@ -348,5 +349,45 @@ describe("deterministic visual QA", () => {
       "product_blank",
     );
     expect(cropFor({ x: -10, y: 1800, w: 600, h: 400 }, 1080, 1920)).toBe("crop=600:120:0:1800");
+  });
+});
+
+describe("voice rules", () => {
+  const p = testPlan({ durationMs: 5000 });
+  const voice = (
+    lastEndMs: number,
+    issues?: { code: string; severity: "blocker" | "major" | "minor"; message: string }[],
+  ) => ({
+    path: "v.wav",
+    durationMs: lastEndMs,
+    words: [
+      { text: "Link", startMs: 300, endMs: 700 },
+      { text: "bio.", startMs: 800, endMs: lastEndMs },
+    ],
+    timingsSource: "alignment" as const,
+    segments: [],
+    provider: "piper",
+    model: "m",
+    voice: "v",
+    ...(issues ? { issues } : {}),
+  });
+
+  it("words cut off the delivered file are a blocker, words in the end margin a major", () => {
+    expect(voiceRules(voice(5200), p).issues.find((i) => i.code === "voice_overrun")?.severity).toBe(
+      "blocker",
+    );
+    expect(voiceRules(voice(4900), p).issues.find((i) => i.code === "voice_overrun")?.severity).toBe("major");
+    expect(voiceRules(voice(4000), p).issues).toEqual([]);
+  });
+
+  it("surfaces the voice builder's blocker / major issues once (no double overrun)", () => {
+    const r = voiceRules(
+      voice(5200, [
+        { code: "VOICE_OVERFLOW", severity: "blocker", message: "320 ms cut" },
+        { code: "VOICE_PACE_RAISED", severity: "minor", message: "pace 1.1" },
+      ]),
+      p,
+    );
+    expect(r.issues.map((i) => [i.code, i.severity])).toEqual([["voice_overflow", "blocker"]]);
   });
 });

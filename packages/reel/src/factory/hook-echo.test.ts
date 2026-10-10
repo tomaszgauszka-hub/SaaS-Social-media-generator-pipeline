@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { echoes, unitEconomics, withoutTextEcho } from "./factory.ts";
+import { echoes, estimateStudioMs, unitEconomics, withoutTextEcho } from "./factory.ts";
 
 const plan = (spoken: string, shown: string) => ({
   copy: {
@@ -79,5 +79,21 @@ describe("unit economics", () => {
     expect(
       unitEconomics({ apiUsd: 0, wallMs: 0, usdPerHour: 0.15, reels: 1, commission: {} }).breakEvenSales,
     ).toBeUndefined();
+  });
+});
+
+describe("studio budget", () => {
+  it("estimates the worst-case Blender time: plates per file, sequences per rendered frame", () => {
+    const shots = [
+      { source: "blender", technique: "relight", preset: "silhouette_reveal", durationMs: 2300 },
+      { source: "blender", technique: "sequence", preset: "slow_turntable", durationMs: 2800 },
+      { source: "blender", technique: "plate", preset: "macro_push", durationMs: 2400 },
+      { source: "existing_asset", technique: "plate", preset: "cta_hero", durationMs: 2000 },
+    ] as const;
+    const plan = { shots: shots as unknown as Parameters<typeof estimateStudioMs>[0]["shots"] };
+    // QUALITY: 3 plate files × 300 s + ceil(2.8 s × 15 fps) = 42 frames × 200 s
+    expect(estimateStudioMs(plan, "QUALITY")).toBe(3 * 300_000 + 42 * 200_000);
+    // FAST: slow presets render at 8 fps → ceil(22.4) = 23 frames
+    expect(estimateStudioMs(plan, "FAST")).toBe(3 * 25_000 + 23 * 12_000);
   });
 });

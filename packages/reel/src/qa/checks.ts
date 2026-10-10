@@ -523,7 +523,12 @@ export function brandingRules(
   return out;
 }
 
-export function voiceRules(voice: VoiceTrack | undefined, plan: ReelPlan): RuleResult {
+/** issues the voice track builder raised (VoiceTrackResult.issues) — structural, so QA needs no audio import */
+type VoiceWithIssues = VoiceTrack & {
+  issues?: readonly { code: string; severity: QaIssue["severity"]; message: string; atMs?: number }[];
+};
+
+export function voiceRules(voice: VoiceWithIssues | undefined, plan: ReelPlan): RuleResult {
   const out = empty();
   if (!plan.voiceover.enabled) return out;
   if (!voice) {
@@ -531,6 +536,15 @@ export function voiceRules(voice: VoiceTrack | undefined, plan: ReelPlan): RuleR
     out.issues.push({ code: "voice_missing", severity: "major", message: "voice-over planned but missing" });
     return out;
   }
+  // the builder's own findings that change what the viewer hears (cut words, a second speaker, a lost line)
+  const built = (voice.issues ?? []).filter((i) => i.severity !== "minor");
+  for (const i of built)
+    out.issues.push({
+      code: i.code.toLowerCase().slice(0, 60),
+      severity: i.severity,
+      message: i.message.slice(0, 400),
+      ...(i.atMs !== undefined ? { atMs: Math.round(i.atMs) } : {}),
+    });
   const last = voice.words[voice.words.length - 1];
   const fits = !last || last.endMs <= plan.durationMs - 150;
   const monotonic = voice.words.every(
@@ -542,10 +556,11 @@ export function voiceRules(voice: VoiceTrack | undefined, plan: ReelPlan): RuleR
     value: { words: voice.words.length, lastEndMs: last?.endMs ?? 0, source: voice.timingsSource },
     note: `${voice.provider}/${voice.voice}, timings: ${voice.timingsSource}`,
   });
-  if (!fits)
+  if (!fits && !built.some((i) => i.code === "VOICE_OVERFLOW"))
     out.issues.push({
       code: "voice_overrun",
-      severity: "major",
+      // words past the end are cut off the delivered file; inside the end margin they are only rushed
+      severity: last.endMs > plan.durationMs ? "blocker" : "major",
       message: `speech ends at ${last?.endMs} ms, too close to the end`,
     });
   if (!monotonic)
