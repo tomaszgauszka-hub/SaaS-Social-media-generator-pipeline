@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { TextElement } from "../contracts/media.ts";
 import { PLATFORM_PROFILES } from "../contracts/profiles.ts";
 import { testPlan } from "../testing/fixtures.ts";
 import { buildMixArgs, duckingExpression, duckingGainDb, loudnormTarget, speechRegions } from "./audio.ts";
 import { buildLocalizedVideoArgs } from "./compose.ts";
-import { buildMasterArgs, logoOverlay, logoRect } from "./master.ts";
+import { buildMasterArgs, logoOverlay, logoRect, textBandTop } from "./master.ts";
 import {
   assLines,
   captionEvents,
@@ -108,6 +109,41 @@ describe("master args", () => {
 
   it("refuses a missing clip", () => {
     expect(() => buildMasterArgs({ plan, clips: clips.slice(1), outPath: "/o" })).toThrow(/sh01/);
+  });
+
+  it("keeps a top logo above the text band, scaled down (aspect kept, even size) when it is too tall", () => {
+    // TikTok: band panels start at 224 (top bar 150 + 96 − 22); the logo row starts at 164 and keeps 8 px clear
+    expect(logoRect("top_left", tiktok, 230, 56)).toEqual({ x: 48, y: 164, w: 230, h: 56 });
+    expect(logoRect("top_left", tiktok, 230, 56, 224)).toEqual({ x: 48, y: 164, w: 212, h: 52 });
+    expect(logoRect("top_right", tiktok, 200, 200, 224)).toEqual({ x: 1080 - 48 - 52, y: 164, w: 52, h: 52 });
+    expect(logoRect("top_left", tiktok, 230, 40, 224)).toEqual({ x: 48, y: 164, w: 230, h: 40 });
+    // bottom logos are not affected by the band
+    expect(logoRect("bottom_right", tiktok, 200, 200, 224)).toMatchObject({ w: 200, h: 200 });
+    const texts = [
+      {
+        box: { x: 300, y: 246, w: 480, h: 90 },
+        panel: { color: "#000000", opacity: 0.6, radius: 26, padding: 22 },
+      },
+      {
+        box: { x: 48, y: 1486, w: 360, h: 34 },
+        panel: { color: "#000000", opacity: 0.45, radius: 14, padding: 12 },
+      },
+    ];
+    expect(textBandTop(texts, 1920)).toBe(224);
+    expect(textBandTop(texts.slice(1), 1920)).toBeUndefined();
+    const o = logoOverlay({
+      logo: { path: "/l.png", width: 1000, height: 1000, widthPx: 200, position: "top_right" },
+      window: { startMs: 0, endMs: 5000 },
+      platform: tiktok,
+      fps: 30,
+      durationMs: 5000,
+      inputIndex: 2,
+      inLabel: "0:v",
+      outLabel: "lg",
+      textTop: 224,
+    });
+    expect(o.box).toEqual({ x: 980, y: 164, w: 52, h: 52 });
+    expect(o.graph[0]).toContain("scale=52:52:flags=lanczos");
   });
 
   it("places logos outside the platform UI", () => {
@@ -217,6 +253,35 @@ describe("ASS", () => {
     expect(ev[1]!.text).toContain("\\fnInter ExtraBold\\fs70\\b0");
   });
 
+  it("asks libass for the cell size of the em size the layout measured (\\fs = em × ascent+descent / upm)", () => {
+    const cta: TextElement = {
+      id: "cta",
+      kind: "cta",
+      text: "Link w bio",
+      startMs: 3500,
+      endMs: 5000,
+      box: { x: 330, y: 300, w: 400, h: 90 },
+      align: "center",
+      fontSizePx: 70,
+      font: { family: "Inter", file: "x.otf" },
+      color: "#FFFFFF",
+    };
+    const inter = () => 2478 / 2048;
+    expect(textElementEvents(cta, face, 1080, 1920, inter)[0]!.text).toContain("\\fs85\\b0");
+    const track = {
+      style: "phrase_pop" as const,
+      phrases: [{ startMs: 0, endMs: 900, words: [{ text: "Ciepłe", startMs: 0, endMs: 500 }] }],
+      font: { family: "Inter", file: "x.otf" },
+      fontSizePx: 64,
+      color: "#FFFFFF",
+      highlightColor: "#E8A33D",
+      outlineColor: "#000000",
+      box: { x: 72, y: 1050, w: 936, h: 260 },
+      uppercase: false,
+    };
+    expect(captionEvents(track, face, 1080, 1920, inter)[0]!.text).toContain("\\fs77\\b0");
+  });
+
   it("word_highlight: one event per word, the active word in the highlight colour", () => {
     const track = {
       style: "word_highlight" as const,
@@ -279,7 +344,14 @@ describe("ASS", () => {
 
   it("breaks long phrases into two balanced lines and de-overlaps phrases", () => {
     expect(captionLineBreak(["short"], 64, 900)).toBeNull();
-    expect(captionLineBreak(["Mosiężna", "nóżka", "i", "orzechowa", "podstawa"], 64, 700)).toBe(3);
+    // both lines inside the band first: "i orzechowa podstawa" would be wider than 700 px
+    expect(captionLineBreak(["Mosiężna", "nóżka", "i", "orzechowa", "podstawa"], 64, 700, "pl")).toBe(3);
+    // then no line ending on a one-letter / weak word ("Mosiężna nóżka i" → "i" goes to the second line)
+    expect(captionLineBreak(["Mosiężna", "nóżka", "i", "orzechowa", "podstawa"], 64, 760, "pl")).toBe(2);
+    expect(captionLineBreak(["Wieczór", "w", "zupełnie"], 64, 600, "pl")).toBe(1);
+    expect(captionLineBreak(["Deine", "Abende", "in", "ganz", "neuem", "Licht"], 64, 700, "de")).toBe(2);
+    expect(captionLineBreak(["Warm", "light", "for", "the", "evening"], 64, 500, "en")).toBe(2);
+    expect(captionLineBreak(["Warm", "light", "for", "the", "evening"], 64, 500)).toBe(3);
     const p = normalisePhrases([
       { startMs: 0, endMs: 1200, words: [{ text: "a", startMs: 0, endMs: 500 }] },
       { startMs: 1000, endMs: 2000, words: [{ text: "b", startMs: 1000, endMs: 1500 }] },

@@ -179,6 +179,10 @@ describe.skipIf(!hasFfmpeg)("runReelQa on real files", () => {
     expect(failed).toEqual([]);
     expect(ok.passed).toBe(true);
     expect(ok.frames).toHaveLength(5);
+    // per platform: another platform's pass of the same variant + locale must not overwrite these frames
+    expect(path.dirname(ok.frames[0]!.path)).toBe(
+      path.join(dir, `qa-${plan.metadata.variantKey}-pl-PL-tiktok`),
+    );
     expect(ok.visualQa?.provider).toBe("deterministic");
 
     // broken: wrong size, black second, silent audio, too short

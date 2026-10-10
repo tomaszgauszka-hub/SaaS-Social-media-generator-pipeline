@@ -7,6 +7,7 @@ import type {
   Transition,
 } from "../contracts/ids.ts";
 import type { ReelJob } from "../contracts/job.ts";
+import { lightSwitchFrame } from "../contracts/media.ts";
 import {
   REEL_PLAN_VERSION,
   ReelPlan,
@@ -46,8 +47,16 @@ const MACRO = new Set<ShotPreset>([
   "technical_cutaway",
 ]);
 
-export function techniqueFor(preset: ShotPreset, animation: PlanShot["productAnimation"]): ShotTechnique {
-  if (animation === "light_on" || preset === "silhouette_reveal") return "relight";
+/**
+ * relight (off / on plates) only for a product that emits light: without a light of its own both plates are the
+ * same pixels, so a silhouette_reveal / light_on of anything else is planned like any other shot.
+ */
+export function techniqueFor(
+  preset: ShotPreset,
+  animation: PlanShot["productAnimation"],
+  emitsLight: boolean,
+): ShotTechnique {
+  if (emitsLight && (animation === "light_on" || preset === "silhouette_reveal")) return "relight";
   if (SEQUENCE.has(preset) || animation === "rotate" || animation === "drop" || animation === "float")
     return "sequence";
   return "plate";
@@ -169,7 +178,7 @@ export function compilePlan(a: CompileInput): ReelPlan {
     const startMs = bounds[i]!;
     const durMs = bounds[i + 1]! - startMs;
     const productAnimation = s.productAnimation;
-    const technique = techniqueFor(s.preset, productAnimation);
+    const technique = techniqueFor(s.preset, productAnimation, a.profile.traits.emitsLight);
     const macro = MACRO.has(s.preset) || s.focus === "detail";
     const lighting: LightingPreset =
       technique === "relight" && i === 0 ? "rim_dramatic" : d.visualStyle.lighting;
@@ -259,12 +268,18 @@ export function compilePlan(a: CompileInput): ReelPlan {
     .filter((c) => c.shotIndex < shots.length)
     .map((c) => {
       const s = shots[c.shotIndex]!;
+      // a relight's switch click lands on the frame the light starts to come on (the clip's crossfade)
+      const switchOn =
+        c.kind === "light_switch" && s.technique === "relight"
+          ? s.startMs + Math.round((lightSwitchFrame(Math.round((s.durationMs * fps) / 1000)) * 1000) / fps)
+          : undefined;
       const atMs =
-        c.at === "start"
+        switchOn ??
+        (c.at === "start"
           ? s.startMs
           : c.at === "mid"
             ? s.startMs + Math.round(s.durationMs / 2)
-            : s.startMs + s.durationMs - 150;
+            : s.startMs + s.durationMs - 150);
       return { atMs: Math.max(0, Math.min(durationMs - 100, atMs)), kind: c.kind, gainDb: SFX_GAIN[c.kind] };
     })
     .sort((x, y) => x.atMs - y.atMs);

@@ -8,6 +8,8 @@ import {
   captionRules,
   contrastRatio,
   ctaRules,
+  productRectAt,
+  productRectsDuring,
   productRules,
   scoreReport,
   technicalRules,
@@ -16,7 +18,7 @@ import {
   type TechMeasure,
 } from "./checks.ts";
 import { planRetry } from "./retry.ts";
-import { productRectAt } from "./run.ts";
+import { qaFrameDir } from "./run.ts";
 import { cropFor, judgeFrame, parseSignalstats } from "./visual.ts";
 
 const tiktok = PLATFORM_PROFILES.tiktok;
@@ -200,6 +202,70 @@ describe("text, captions, CTA, branding", () => {
     p.cta.startMs = 4000;
     const r = ctaRules(p, [text({})], tiktok);
     expect(r.issues[0]).toMatchObject({ code: "cta_short", fix: "extend_cta:800" });
+  });
+
+  it("reports text over the product: minor when it reaches into the box, major when it hides a real part", () => {
+    // the CTA shot (3500–5000 ms) shows the product at y 360…1560; the CTA panel is y 224…358 (box + 22 px)
+    const p = testPlan({ durationMs: 5000 });
+    const track = (y: number): ShotClip[] =>
+      p.shots.map((s) => ({
+        shotId: s.id,
+        path: "",
+        durationMs: s.durationMs,
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        productTrack: [{ tMs: 0, rect: { x: 140, y, w: 800, h: 1200 } }],
+        cacheHit: false,
+        renderMs: 0,
+        encodeMs: 0,
+      }));
+    const during = (clips: ShotClip[]) => (a: number, b: number) => productRectsDuring(p, clips, a, b);
+    const cta = text({});
+    expect(ids(textRules([cta], tiktok, during(track(360))))).toEqual([]);
+    // 2-line hook-sized panel (y 224…466) over the product top at 300: 166 px of it on the product
+    const tall = text({ box: { x: 200, y: 246, w: 680, h: 198 } });
+    const major = textRules([tall], tiktok, during(track(300)));
+    expect(major.issues).toEqual([expect.objectContaining({ code: "text_over_product", severity: "major" })]);
+    expect(major.checks[0]).toMatchObject({ passed: false });
+    // the same panel only 60 px into the product box: minor
+    const minor = textRules([tall], tiktok, during(track(406)));
+    expect(minor.issues).toEqual([expect.objectContaining({ code: "text_over_product", severity: "minor" })]);
+    // grazing the box top (< 3 % of the product) is not reported; neither is the mandatory disclosure
+    expect(ids(textRules([tall], tiktok, during(track(440))))).toEqual([]);
+    const disclosure = text({ id: "disclosure", kind: "disclosure", box: { x: 48, y: 1486, w: 360, h: 34 } });
+    expect(ids(textRules([disclosure], tiktok, during(track(300))))).toEqual([]);
+    // a macro close-up fills the frame with the product on purpose: text over it is by design
+    const macro = testPlan({ durationMs: 5000 });
+    for (const s of macro.shots) s.preset = "macro_push";
+    const closeups = track(-200).map((c) => ({
+      ...c,
+      productTrack: [{ tMs: 0, rect: { x: -300, y: -200, w: 1700, h: 2400 } }],
+    }));
+    expect(productRectsDuring(macro, closeups, 0, 5000)).toEqual([]);
+  });
+
+  it("flags a text panel drawn over the logo", () => {
+    const disclosure = text({
+      id: "disclosure",
+      kind: "disclosure",
+      text: "Reklama",
+      startMs: 0,
+      endMs: 5000,
+      box: { x: 48, y: 1486, w: 360, h: 34 },
+    });
+    const texts = [text({}), disclosure];
+    // the CTA panel (x 308…772, y 224…358) vs a logo in the band and a logo above it
+    const over = brandingRules(plan, brand, texts, true, { x: 700, y: 200, w: 200, h: 60 });
+    expect(over.issues).toEqual([expect.objectContaining({ code: "logo_text_overlap", severity: "major" })]);
+    expect(over.checks.find((c) => c.id === "logo_clear")?.passed).toBe(false);
+    expect(ids(brandingRules(plan, brand, texts, true, { x: 48, y: 164, w: 212, h: 52 }))).toEqual([]);
+  });
+
+  it("keeps QA frames per variant, locale and platform", () => {
+    const p = testPlan();
+    expect(qaFrameDir("/w", p, "tiktok")).toBe("/w/qa-A-pl-PL-tiktok");
+    expect(qaFrameDir("/w", p, "instagram_reels")).toBe("/w/qa-A-pl-PL-instagram_reels");
   });
 
   it("requires the affiliate disclosure for the whole reel", () => {

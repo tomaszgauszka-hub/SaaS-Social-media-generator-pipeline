@@ -1,4 +1,4 @@
-import type { ShotClip } from "../contracts/media.ts";
+import type { ShotClip, TextElement } from "../contracts/media.ts";
 import type { ReelPlan } from "../contracts/plan.ts";
 import type { PlatformProfile, Rect } from "../contracts/profiles.ts";
 import { assertContiguous, shotWindows } from "./timeline.ts";
@@ -20,13 +20,29 @@ export interface LogoInput {
 }
 
 const MARGIN = 48;
+/** logo bottom ↔ the text band's panels (the CTA panel overshoots its box by ~4 px while it pops in) */
+const LOGO_GAP = 8;
+const MIN_LOGO_H = 24;
 
-/** Where the logo goes for a platform: outside every platform UI zone. */
+/** Top of the highest text panel in the upper half of the frame (the hook / overlay / CTA band), if any. */
+export function textBandTop(
+  texts: readonly Pick<TextElement, "box" | "panel">[],
+  H: number,
+): number | undefined {
+  const tops = texts.map((t) => t.box.y - (t.panel?.padding ?? 0)).filter((y) => y < H / 2);
+  return tops.length ? Math.min(...tops) : undefined;
+}
+
+/**
+ * Where the logo goes for a platform: outside every platform UI zone. A top logo also stays above the text band
+ * (`textTop`, see textBandTop): when it is too tall for the room it is scaled down (aspect kept, even size).
+ */
 export function logoRect(
   position: LogoInput["position"],
   platform: PlatformProfile,
   w: number,
   h: number,
+  textTop?: number,
 ): Rect {
   const W = platform.width;
   const top = Math.max(0, ...platform.unsafe.filter((u) => u.rect.y === 0).map((u) => u.rect.h));
@@ -37,11 +53,17 @@ export function logoRect(
       .map((u) => u.rect.y),
   );
   const rail = Math.min(W, ...platform.unsafe.filter((u) => u.rect.x > W / 2).map((u) => u.rect.x));
+  const y = top + 14;
+  const room = textTop === undefined ? h : Math.max(MIN_LOGO_H, textTop - LOGO_GAP - y);
+  const s = Math.min(1, room / h);
+  const tw = s < 1 ? Math.max(2, Math.floor((w * s) / 2) * 2) : w;
+  const th = s < 1 ? Math.max(2, Math.floor((h * s) / 2) * 2) : h;
   switch (position) {
     case "top_left":
-      return { x: MARGIN, y: top + 14, w, h };
+      return { x: MARGIN, y, w: tw, h: th };
     case "top_right":
-      return { x: W - MARGIN - w, y: top + 14, w, h };
+      return { x: W - MARGIN - tw, y, w: tw, h: th };
+    // bottom logos keep their size: the text band is at the top
     case "bottom_right":
       return { x: Math.min(W - MARGIN, rail - 24) - w, y: bottom - h - 24, w, h };
     case "end_card":
@@ -59,7 +81,8 @@ export interface MasterArgs {
 
 /**
  * Pure: logo overlay for one platform pass — an extra looped-image input plus filter steps that put the PNG
- * (alpha, scaled to `widthPx`) outside the platform's UI zones with a short alpha fade over the logo window.
+ * (alpha, scaled to `widthPx`, smaller when a top logo would reach the text band) outside the platform's UI
+ * zones with a short alpha fade over the logo window.
  */
 export function logoOverlay(o: {
   logo: LogoInput;
@@ -70,10 +93,12 @@ export function logoOverlay(o: {
   inputIndex: number;
   inLabel: string;
   outLabel: string;
+  /** top of the text band's panels (textBandTop): a top logo stays above it */
+  textTop?: number;
 }): { inputArgs: string[]; graph: string[]; box: Rect } {
   const lw = Math.round(o.logo.widthPx / 2) * 2;
   const lh = Math.round(((o.logo.height / o.logo.width) * lw) / 2) * 2;
-  const box = logoRect(o.logo.position, o.platform, lw, lh);
+  const box = logoRect(o.logo.position, o.platform, lw, lh, o.textTop);
   const s = Math.max(0, o.window.startMs) / 1000;
   const e = Math.min(o.durationMs, o.window.endMs) / 1000;
   const fade = Math.min(0.3, (e - s) / 4);
@@ -89,7 +114,7 @@ export function logoOverlay(o: {
       o.logo.path,
     ],
     graph: [
-      `[${o.inputIndex}:v]format=rgba,scale=${lw}:${lh}:flags=lanczos,` +
+      `[${o.inputIndex}:v]format=rgba,scale=${box.w}:${box.h}:flags=lanczos,` +
         `fade=t=in:st=${s.toFixed(3)}:d=${fade.toFixed(3)}:alpha=1,fade=t=out:st=${(e - fade).toFixed(3)}:d=${fade.toFixed(3)}:alpha=1[logo]`,
       `[${o.inLabel}][logo]overlay=x=${Math.round(box.x)}:y=${Math.round(box.y)}:enable='between(t,${s.toFixed(3)},${e.toFixed(3)})':eof_action=pass[${o.outLabel}]`,
     ],

@@ -7,7 +7,8 @@ import type { BrandProfile, PlatformProfile, Rect } from "../contracts/profiles.
 /**
  * Pure QA rules. Each returns named checks and issues; an issue carries a deterministic `fix` code when the
  * factory can repair it without a model (planRetry): reframe:<shot>:+fill|-fill, reposition_captions,
- * extend_cta, renormalize.
+ * extend_cta, renormalize. Text over the product and text over the logo have no deterministic fix (the layout
+ * already avoids both where it can): they lower the score and are left for review.
  */
 
 export type Check = QaReport["checks"][number];
@@ -186,6 +187,41 @@ const CLOSEUPS = new Set([
   "technical_cutaway",
 ]);
 
+const isCloseup = (shot: ReelPlan["shots"][number]) =>
+  CLOSEUPS.has(shot.preset) || shot.params.focus === "detail";
+
+/** Product box at a reel time, from the shot clip's product track (clip-local times). */
+export function productRectAt(plan: ReelPlan, clips: readonly ShotClip[], atMs: number): Rect | null {
+  const shot = plan.shots.find((s) => atMs >= s.startMs && atMs < s.startMs + s.durationMs);
+  const track = shot ? clips.find((c) => c.shotId === shot.id)?.productTrack : undefined;
+  if (!shot || !track?.length) return null;
+  const local = atMs - shot.startMs;
+  const best = track.reduce((a, b) => (Math.abs(b.tMs - local) < Math.abs(a.tMs - local) ? b : a));
+  return toPx(best.rect, plan.resolution.width, plan.resolution.height);
+}
+
+/**
+ * Product boxes (px) every `stepMs` over [startMs, endMs) — none while a close-up (or any framing where the
+ * product fills most of the frame) makes the product the backdrop: text there is over the product by design.
+ */
+export function productRectsDuring(
+  plan: ReelPlan,
+  clips: readonly ShotClip[],
+  startMs: number,
+  endMs: number,
+  stepMs = 100,
+): Rect[] {
+  const { width: W, height: H } = plan.resolution;
+  const frame = { x: 0, y: 0, w: W, h: H };
+  const out: Rect[] = [];
+  for (let t = startMs; t < endMs; t += stepMs) {
+    const shot = plan.shots.find((s) => t >= s.startMs && t < s.startMs + s.durationMs);
+    const r = shot && !isCloseup(shot) ? productRectAt(plan, clips, t) : null;
+    if (r && area(intersect(r, frame)) <= 0.6 * area(frame)) out.push(r);
+  }
+  return out;
+}
+
 export function productRules(plan: ReelPlan, clips: readonly ShotClip[]): RuleResult {
   const out = empty();
   const { width: W, height: H } = plan.resolution;
@@ -200,7 +236,7 @@ export function productRules(plan: ReelPlan, clips: readonly ShotClip[]): RuleRe
     const rects = track.map((t) => toPx(t.rect, W, H));
     const visible = Math.min(...rects.map((r) => (area(r) ? area(intersect(r, frame)) / area(r) : 0)));
     const heightShare = Math.min(...rects.map((r) => Math.min(r.h, H) / H));
-    const closeup = CLOSEUPS.has(shot.preset) || shot.params.focus === "detail";
+    const closeup = isCloseup(shot);
     // a close-up shows part of the product on purpose: it is "missing" only when the product barely covers the frame
     const coverage = Math.min(...rects.map((r) => area(intersect(r, frame)) / area(frame)));
     const cut = !closeup && visible < 0.9;
@@ -300,7 +336,28 @@ export function contrastRatio(a: string, b: string): number {
 /** words a viewer can read per second on screen (comfortable ≈ 3, fast 4.5) */
 const READ_WPS = 4.5;
 
-export function textRules(texts: readonly TextElement[], platform: PlatformProfile): RuleResult {
+/**
+ * How much a text panel covers the product during its window: the largest share of the product box hidden and
+ * the largest share of the panel that sits on the product. Boxes are bounding boxes, so a panel grazing the box
+ * top (< 3 % of the product hidden) usually covers background and is not reported.
+ */
+export function productCover(panel: Rect, products: readonly Rect[]): { hidden: number; share: number } {
+  let hidden = 0;
+  let share = 0;
+  for (const p of products) {
+    const a = area(intersect(panel, p));
+    hidden = Math.max(hidden, a / Math.max(1, area(p)));
+    share = Math.max(share, a / Math.max(1, area(panel)));
+  }
+  return { hidden, share };
+}
+
+export function textRules(
+  texts: readonly TextElement[],
+  platform: PlatformProfile,
+  /** product boxes (px) on screen over a window (productRectsDuring); omitted = not measurable */
+  productDuring?: (startMs: number, endMs: number) => Rect[],
+): RuleResult {
   const out = empty();
   for (const t of texts) {
     const rect = panelRect(t);
@@ -311,13 +368,36 @@ export function textRules(texts: readonly TextElement[], platform: PlatformProfi
     const readable =
       t.kind === "disclosure" || (t.endMs - t.startMs) / 1000 >= Math.max(0.8, words / READ_WPS);
     const contrast = t.panel && t.panel.opacity >= 0.55 ? contrastRatio(t.color, t.panel.color) : null;
-    const passed = inside && !hits.length && readable && (contrast === null || contrast >= 4.5);
+    // the disclosure has a fixed, mandatory place (bottom-left, whole reel): never judged against the product
+    const cover =
+      productDuring && t.kind !== "disclosure"
+        ? productCover(rect, productDuring(t.startMs, t.endMs))
+        : { hidden: 0, share: 0 };
+    const overProduct = cover.hidden >= 0.03;
+    const passed =
+      inside && !hits.length && readable && (contrast === null || contrast >= 4.5) && !overProduct;
     out.checks.push({
       id: `text:${t.id}`,
       passed,
-      value: { hits, readable, contrast: contrast && Number(contrast.toFixed(2)) },
+      value: {
+        hits,
+        readable,
+        contrast: contrast && Number(contrast.toFixed(2)),
+        productHidden: Number(cover.hidden.toFixed(3)),
+      },
       note: `${t.kind} "${t.text.replace(/\n/g, " ").slice(0, 60)}"`,
     });
+    // major only when most of the panel sits on the product and hides a real part of it (the hook over the
+    // product's top while it lights up); a panel reaching a little into the product box is minor
+    if (overProduct)
+      out.issues.push({
+        code: "text_over_product",
+        severity: cover.share >= 0.5 && cover.hidden >= 0.08 ? "major" : "minor",
+        message:
+          `${t.id} covers ${Math.round(cover.hidden * 100)} % of the product ` +
+          `(${Math.round(cover.share * 100)} % of its panel)`,
+        atMs: t.startMs,
+      });
     if (!inside || hits.length)
       out.issues.push({
         code: "text_unsafe",
@@ -375,6 +455,8 @@ export function brandingRules(
   brand: BrandProfile,
   texts: readonly TextElement[],
   logoExpected: boolean,
+  /** where the composer drew the logo (composeLocalized's logoBox) */
+  logoBox?: Rect,
 ): RuleResult {
   const out = empty();
   const logo = plan.branding.logo;
@@ -395,6 +477,28 @@ export function brandingRules(
       severity: "minor",
       message: "brand logo / name barely visible",
     });
+
+  // the logo is burned in under the text: a text panel over it hides the brand (or the panel's text)
+  if (logoBox && logo.enabled) {
+    const under = texts.filter(
+      (t) => t.startMs < logo.endMs && t.endMs > logo.startMs && area(intersect(panelRect(t), logoBox)) > 0,
+    );
+    out.checks.push({
+      id: "logo_clear",
+      passed: under.length === 0,
+      value: { logo: logoBox, texts: under.map((t) => t.id) },
+      note: under.length
+        ? `text panels over the logo: ${under.map((t) => t.id).join(", ")}`
+        : "logo clear of text",
+    });
+    for (const t of under)
+      out.issues.push({
+        code: "logo_text_overlap",
+        severity: "major",
+        message: `${t.id} panel overlaps the logo`,
+        atMs: Math.max(t.startMs, logo.startMs),
+      });
+  }
 
   // affiliate / ad disclosure: required whenever the brand defines one — never hidden, whole reel
   const required = Object.keys(brand.disclosure).length > 0;
@@ -459,14 +563,15 @@ export function allRules(a: {
   voice?: VoiceTrack;
   brand: BrandProfile;
   logoExpected: boolean;
+  logoBox?: Rect;
 }): RuleResult {
   return merge(
     technicalRules(a.tech, a.plan, a.platform),
     productRules(a.plan, a.clips),
     captionRules(a.captions, a.platform),
-    textRules(a.texts, a.platform),
+    textRules(a.texts, a.platform, (s, e) => productRectsDuring(a.plan, a.clips, s, e)),
     ctaRules(a.plan, a.texts, a.platform),
-    brandingRules(a.plan, a.brand, a.texts, a.logoExpected),
+    brandingRules(a.plan, a.brand, a.texts, a.logoExpected, a.logoBox),
     voiceRules(a.voice, a.plan),
   );
 }

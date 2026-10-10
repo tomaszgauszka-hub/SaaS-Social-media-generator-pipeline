@@ -13,7 +13,7 @@ import { CostTracker } from "../cost/tracker.ts";
 import { loadBrandProfile } from "../factory/profiles.ts";
 import { ingestAboProduct } from "../ingest/abo.ts";
 import { TemplateTranscreation } from "../localize/template.ts";
-import { compilePlan, snapBoundaries } from "./compile.ts";
+import { compilePlan, snapBoundaries, techniqueFor } from "./compile.ts";
 import { GeminiDirector, decisionProblems } from "./gemini.ts";
 import { applicableHooks, chooseHook } from "./hooks.ts";
 import { detectConcepts } from "./lexicon.ts";
@@ -137,6 +137,18 @@ describe.skipIf(!hasLamp)("director on the real lamp (ABO B075X2FZSM)", () => {
     }
     expect(t).toBe(12_000);
     expect(plan.shots[0]).toMatchObject({ role: "HOOK", technique: "relight", productAnimation: "light_on" });
+    // the switch click lands on the first frame of the relight crossfade (round(0.3·N) of the shot's N frames),
+    // not on the shot midpoint
+    const hookFrames = Math.round((plan.shots[0]!.durationMs * plan.fps) / 1000);
+    expect(plan.sfx.find((c) => c.kind === "light_switch")?.atMs).toBe(
+      Math.round((Math.round(0.3 * hookFrames) * 1000) / plan.fps),
+    );
+    // a product without a light of its own never gets the off / on plates (they would be identical)
+    const unlit = compilePlan({
+      ...args,
+      profile: { ...profile, traits: { ...profile.traits, emitsLight: false } },
+    });
+    expect(unlit.shots.some((s) => s.technique === "relight")).toBe(false);
     expect(plan.cta.endMs - plan.cta.startMs).toBeGreaterThanOrEqual(platform.cta.minMs);
     expect(
       plan.voiceover.segments.every((v, i, a) => v.atMs < 12_000 && (i === 0 || v.atMs > a[i - 1]!.atMs)),
@@ -247,6 +259,17 @@ describe.skipIf(!hasLamp)("director on the real lamp (ABO B075X2FZSM)", () => {
     await expect(new GeminiDirector({ ...ai, hasApiKey: false }, "m").available()).resolves.toMatchObject({
       ok: false,
     });
+  });
+});
+
+describe("techniqueFor", () => {
+  it("plans a relight only for a product that emits light", () => {
+    expect(techniqueFor("silhouette_reveal", "none", true)).toBe("relight");
+    expect(techniqueFor("hero_reveal", "light_on", true)).toBe("relight");
+    expect(techniqueFor("silhouette_reveal", "none", false)).toBe("plate");
+    expect(techniqueFor("hero_reveal", "light_on", false)).toBe("plate");
+    expect(techniqueFor("silhouette_reveal", "rotate", false)).toBe("sequence");
+    expect(techniqueFor("slow_turntable", "none", false)).toBe("sequence");
   });
 });
 

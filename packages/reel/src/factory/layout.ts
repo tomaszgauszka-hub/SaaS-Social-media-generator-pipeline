@@ -1,13 +1,16 @@
 import { fitText, type FontSpec, type TextMeasurer } from "@cre/creative";
-import type { TextElement } from "../contracts/media.ts";
+import type { ShotClip, TextElement } from "../contracts/media.ts";
 import type { ReelPlan } from "../contracts/plan.ts";
 import type { BrandProfile, PlatformProfile, Rect } from "../contracts/profiles.ts";
+import { productRectsDuring } from "../qa/checks.ts";
 
 /**
  * Deterministic on-screen text layout for one locale: hook line, per-shot feature overlays, CTA headline +
  * button, disclosure. Sizes come from real font metrics (the same files libass draws), positions from the
  * platform's unsafe zones — the hook / overlay / CTA band sits under the platform top bar and above the caption
- * band, the disclosure sits bottom-left above the platform's own caption area.
+ * band, the disclosure sits bottom-left above the platform's own caption area. With the shot clips' product
+ * tracks, a hook / overlay / CTA headline whose panel would reach into the product's top is set smaller (or on
+ * fewer lines) when that clears the product at a readable size.
  */
 
 export interface LayoutIssue {
@@ -17,6 +20,9 @@ export interface LayoutIssue {
 
 const PANEL_PAD = 22;
 const SIDE = 72;
+const LINE_HEIGHT = 1.12;
+/** panel bottom ↔ product top */
+const PRODUCT_GAP = 12;
 
 export function bandsFor(platform: PlatformProfile): { topY: number; disclosureY: number; right: number } {
   const topBar = Math.max(
@@ -39,7 +45,7 @@ function spec(font: { family: string; weight: number }): FontSpec {
     style: "normal",
     letterSpacing: 0,
     transform: "none",
-    lineHeight: 1.12,
+    lineHeight: LINE_HEIGHT,
   };
 }
 
@@ -91,6 +97,8 @@ export function buildTextElements(opts: {
   brand: BrandProfile;
   platform: PlatformProfile;
   measurer: TextMeasurer;
+  /** the shot clips (product tracks): keeps band text off the product where it can */
+  clips?: readonly ShotClip[];
 }): { elements: TextElement[]; issues: LayoutIssue[] } {
   const { plan, brand, platform, measurer } = opts;
   const copy = plan.copy;
@@ -108,19 +116,42 @@ export function buildTextElements(opts: {
     if (!f.fits)
       issues.push({ slot, message: `"${f.text.replace(/\n/g, " ")}" does not fit at ${f.size}px` });
   };
+  /**
+   * A band text (box top at bands.topY) shown over [startMs, endMs): the preferred fit, unless its panel would
+   * reach into the product's top — then the largest fit that ends PRODUCT_GAP above it, if one is readable
+   * (≥ size.min). Otherwise the preferred fit stays (QA reports text_over_product).
+   */
+  const fitBand = (
+    value: string,
+    font: { family: string; weight: number },
+    h: number,
+    size: { min: number; max: number },
+    startMs: number,
+    endMs: number,
+  ): Fit => {
+    const f = fit(measurer, value, font, maxW, h, size, 2, locale);
+    const products = opts.clips ? productRectsDuring(plan, opts.clips, startMs, endMs) : [];
+    if (!f.fits || !products.length) return f;
+    const room = Math.min(...products.map((r) => r.y)) - PRODUCT_GAP - PANEL_PAD - bands.topY;
+    const max = Math.min(size.max, Math.floor(room / LINE_HEIGHT));
+    if (f.height <= room || max < size.min) return f;
+    const g = fit(measurer, value, font, maxW, Math.min(h, room), { min: size.min, max }, 2, locale);
+    return g.fits && g.height <= room ? g : f;
+  };
 
   // hook — the first words of the reel, on the opening shot
   const hook = text("hook");
   const first = plan.shots[0];
   if (hook && first) {
-    const f = fit(measurer, hook, brand.fonts.display, maxW, 250, { min: 54, max: 88 }, 2, locale);
+    const endMs = Math.min(first.startMs + first.durationMs - 120, 3200);
+    const f = fitBand(hook, brand.fonts.display, 250, { min: 54, max: 88 }, 150, endMs);
     check("hook", f);
     elements.push({
       id: "hook",
       kind: "hook",
       text: f.text,
       startMs: 150,
-      endMs: Math.min(first.startMs + first.durationMs - 120, 3200),
+      endMs,
       box: centred(f, W, bands.topY),
       align: "center",
       fontSizePx: f.size,
@@ -137,7 +168,7 @@ export function buildTextElements(opts: {
     const start = shot.startMs + 260;
     const end = Math.min(shot.startMs + shot.durationMs - 160, plan.cta.startMs - 80);
     if (end - start < 700) continue;
-    const f = fit(measurer, value, brand.fonts.body, maxW, 200, { min: 42, max: 62 }, 2, locale);
+    const f = fitBand(value, brand.fonts.body, 200, { min: 42, max: 62 }, start, end);
     check(shot.overlaySlot, f);
     elements.push({
       id: shot.overlaySlot,
@@ -157,7 +188,7 @@ export function buildTextElements(opts: {
   // CTA headline + button
   const cta = text(plan.cta.slot);
   if (cta) {
-    const f = fit(measurer, cta, brand.fonts.display, maxW, 230, { min: 52, max: 80 }, 2, locale);
+    const f = fitBand(cta, brand.fonts.display, 230, { min: 52, max: 80 }, plan.cta.startMs, plan.cta.endMs);
     check(plan.cta.slot, f);
     const box = centred(f, W, bands.topY);
     elements.push({

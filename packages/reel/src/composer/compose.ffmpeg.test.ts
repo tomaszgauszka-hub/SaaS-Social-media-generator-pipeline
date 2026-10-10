@@ -4,11 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import { resolveFromRoot } from "@cre/config";
 import { probeMedia, runFfmpeg } from "@cre/media";
+import * as fontkit from "fontkit";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { CaptionTrack, ShotClip, TextElement, VoiceTrack } from "../contracts/media.ts";
 import { PLATFORM_PROFILES } from "../contracts/profiles.ts";
 import { testPlan } from "../testing/fixtures.ts";
-import { composeLocalized, composeMaster } from "./compose.ts";
+import { composeLocalized, composeMaster, fontCellRatio, fontFaceName } from "./compose.ts";
+import { buildReelAss } from "./subtitles.ts";
 
 const hasFfmpeg = (() => {
   try {
@@ -49,6 +51,81 @@ async function ebur128(file: string): Promise<{ I: number; TP: number }> {
     TP: Number(/Peak:\s+(-?[\d.]+) dBFS/.exec(summary)?.[1]),
   };
 }
+
+describe.skipIf(!hasFfmpeg)("libass text size", () => {
+  it("draws the em size the layout measured (\\fs is the font's ascent + descent)", async () => {
+    expect(fontCellRatio(FONT)).toBeCloseTo((1984 + 494) / 2048, 6);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "reel-libass-"));
+    try {
+      fs.mkdirSync(path.join(dir, "fonts"));
+      fs.copyFileSync(FONT, path.join(dir, "fonts", "00.otf"));
+      const text = "Poczekaj, aż";
+      const hook: TextElement = {
+        id: "hook",
+        kind: "disclosure", // no scale animation: the frame shows the final size
+        text,
+        startMs: 0,
+        endMs: 1000,
+        box: { x: 200, y: 560, w: 680, h: 100 },
+        align: "center",
+        fontSizePx: 88,
+        font: { family: "Inter", file: FONT },
+        color: "#FFFFFF",
+      };
+      fs.writeFileSync(
+        path.join(dir, "t.ass"),
+        buildReelAss({
+          width: 1080,
+          height: 1920,
+          texts: [hook],
+          faceOf: fontFaceName,
+          cellRatioOf: fontCellRatio,
+          defaultFace: fontFaceName(FONT),
+        }),
+      );
+      const raw = path.join(dir, "f.gray");
+      await runFfmpeg(
+        [
+          "-f",
+          "lavfi",
+          "-i",
+          "color=black:s=1080x1920:d=0.5",
+          "-vf",
+          "ass=filename=t.ass:fontsdir=fonts,format=gray",
+        ].concat(["-frames:v", "1", "-f", "rawvideo", raw]),
+        { cwd: dir },
+      );
+      const px = fs.readFileSync(raw);
+      let x0 = 1080;
+      let x1 = -1;
+      for (let y = 0; y < 1920; y++)
+        for (let x = 0; x < 1080; x++)
+          if (px[y * 1080 + x]! > 128) {
+            x0 = Math.min(x0, x);
+            x1 = Math.max(x1, x);
+          }
+      // the same text's ink width from the font itself at an 88 px em
+      const font = fontkit.create(fs.readFileSync(FONT)) as fontkit.Font;
+      const run = font.layout(text);
+      let pen = 0;
+      let lo = Infinity;
+      let hi = -Infinity;
+      run.glyphs.forEach((g, i) => {
+        if (g.bbox.maxX > g.bbox.minX) {
+          lo = Math.min(lo, pen + g.bbox.minX);
+          hi = Math.max(hi, pen + g.bbox.maxX);
+        }
+        pen += run.positions[i]!.xAdvance;
+      });
+      const expected = ((hi - lo) * 88) / font.unitsPerEm;
+      // before: libass drew \fs88 as an 88 px cell = 72.7 px em (ratio 0.83)
+      expect((x1 - x0 + 1) / expected).toBeGreaterThan(0.97);
+      expect((x1 - x0 + 1) / expected).toBeLessThan(1.03);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
 
 describe.skipIf(!hasFfmpeg)("ReelComposer end to end (synthetic inputs)", () => {
   let dir: string;

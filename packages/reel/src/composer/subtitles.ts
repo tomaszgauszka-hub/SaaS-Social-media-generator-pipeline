@@ -7,6 +7,8 @@ import {
   sanitizeAssText,
   type AssEvent,
 } from "@cre/media";
+import { WEAK_WORDS } from "../audio/captions.ts";
+import { language } from "../audio/voice/text.ts";
 import type { CaptionPhrase, CaptionTrack, TextElement } from "../contracts/media.ts";
 import type { Rect } from "../contracts/profiles.ts";
 
@@ -21,7 +23,18 @@ import type { Rect } from "../contracts/profiles.ts";
 /** font file → the face name libass matches (full name, e.g. "Inter ExtraBold") */
 export type FaceOf = (fontFile: string) => string;
 
+/**
+ * font file → libass's \fs per em. Every size here is an em size (what the layout measured with the font's
+ * advances), but libass, like VSFilter, scales a font so that \fs is its ascent + descent (OS/2 win metrics):
+ * Inter at \fs88 draws 88 / 1.21 = 73 px em. \fs is therefore em × this ratio (1 = draw \fs as the em).
+ */
+export type CellRatioOf = (fontFile: string) => number;
+
 const r = (n: number) => Math.round(n);
+
+/** \\fn + \\fs of a font file at an em size */
+const fontTags = (fontFile: string, emPx: number, faceOf: FaceOf, cellOf: CellRatioOf) =>
+  `\\fn${faceOf(fontFile)}\\fs${r(emPx * cellOf(fontFile))}`;
 
 export function clampBox(b: Rect, W: number, H: number, margin = 0): Rect {
   const w = Math.min(b.w, W - 2 * margin);
@@ -62,7 +75,13 @@ function animation(kind: TextElement["kind"], cx: number, cy: number, durationMs
   }
 }
 
-export function textElementEvents(t: TextElement, faceOf: FaceOf, W: number, H: number): AssEvent[] {
+export function textElementEvents(
+  t: TextElement,
+  faceOf: FaceOf,
+  W: number,
+  H: number,
+  cellOf: CellRatioOf = () => 1,
+): AssEvent[] {
   const pad = t.panel?.padding ?? 0;
   const box = clampBox(t.box, W, H, pad);
   const cx = box.x + box.w / 2;
@@ -91,7 +110,7 @@ export function textElementEvents(t: TextElement, faceOf: FaceOf, W: number, H: 
     endMs: t.endMs,
     style: "Base",
     text:
-      `{\\an${an}${animation(t.kind, ax, cy, dur)}\\q2\\fn${faceOf(t.font.file)}\\fs${r(t.fontSizePx)}\\b0` +
+      `{\\an${an}${animation(t.kind, ax, cy, dur)}\\q2${fontTags(t.font.file, t.fontSizePx, faceOf, cellOf)}\\b0` +
       `\\c${assInlineColor(t.color)}\\bord0\\shad${t.panel ? 0 : 2}\\4c&H000000&\\4a&H90&}${assLines(t.text)}`,
   });
   return events;
@@ -99,22 +118,34 @@ export function textElementEvents(t: TextElement, faceOf: FaceOf, W: number, H: 
 
 /* ---------------------------------------------------------------- captions --------------------- */
 
-/** Split a phrase into ≤ 2 lines at the word boundary that minimises the longer line. */
+/** a line must not end on a one-letter word ("w", "z", "i" — Polish typography) or a weak word of `lang` */
+function weakLineEnd(token: string, lang: string): boolean {
+  const word = token.replace(/[^\p{L}\p{N}]+$/u, "").toLocaleLowerCase();
+  return /^\p{L}$/u.test(word) || Boolean(WEAK_WORDS[lang]?.has(word));
+}
+
+/**
+ * Split a phrase into ≤ 2 lines at a word boundary: both lines inside maxWidth first, then a first line
+ * that does not end on a weak word (in `lang`), then the shorter longer line.
+ */
 export function captionLineBreak(
   tokens: readonly string[],
   fontSizePx: number,
   maxWidth: number,
+  lang = "",
 ): number | null {
   if (tokens.length < 2 || measureText(tokens.join(" "), fontSizePx) <= maxWidth) return null;
   let best = 1;
-  let bestW = Infinity;
+  let bestScore = Infinity;
   for (let i = 1; i < tokens.length; i++) {
     const w = Math.max(
       measureText(tokens.slice(0, i).join(" "), fontSizePx),
       measureText(tokens.slice(i).join(" "), fontSizePx),
     );
-    if (w < bestW) {
-      bestW = w;
+    // lexicographic: overflow ≫ weak line end ≫ width (px, far below 1e6)
+    const score = (w > maxWidth ? 2e6 : 0) + (weakLineEnd(tokens[i - 1]!, lang) ? 1e6 : 0) + w;
+    if (score < bestScore) {
+      bestScore = score;
       best = i;
     }
   }
@@ -138,7 +169,15 @@ export function normalisePhrases(phrases: readonly CaptionPhrase[]): CaptionPhra
   });
 }
 
-export function captionEvents(track: CaptionTrack, faceOf: FaceOf, W: number, H: number): AssEvent[] {
+export function captionEvents(
+  track: CaptionTrack,
+  faceOf: FaceOf,
+  W: number,
+  H: number,
+  cellOf: CellRatioOf = () => 1,
+  locale = "",
+): AssEvent[] {
+  const lang = language(locale);
   const box = clampBox(track.box, W, H);
   const minimal = track.style === "minimal_lower";
   const size = r(minimal ? track.fontSizePx * 0.74 : track.fontSizePx);
@@ -148,14 +187,14 @@ export function captionEvents(track: CaptionTrack, faceOf: FaceOf, W: number, H:
   const hi = assInlineColor(track.highlightColor);
   const bord = minimal ? 2 : Math.max(3, r(size * 0.085));
   const common =
-    `\\an5\\pos(${r(cx)},${r(cy)})\\q2\\fn${faceOf(track.font.file)}\\fs${size}\\b0\\c${base}` +
+    `\\an5\\pos(${r(cx)},${r(cy)})\\q2${fontTags(track.font.file, size, faceOf, cellOf)}\\b0\\c${base}` +
     `\\3c${assInlineColor(track.outlineColor)}\\bord${bord}\\shad${minimal ? 0 : 2}\\4c&H000000&\\4a&H80&`;
   const events: AssEvent[] = [];
   for (const phrase of normalisePhrases(track.phrases)) {
     const tokens = phrase.words.map((w) =>
       sanitizeAssText(track.uppercase ? w.text.toLocaleUpperCase() : w.text),
     );
-    const brk = captionLineBreak(tokens, size, box.w);
+    const brk = captionLineBreak(tokens, size, box.w, lang);
     const ev = (startMs: number, endMs: number, tags: string, text: string): AssEvent => ({
       layer: 5,
       startMs,
@@ -216,11 +255,15 @@ export function buildReelAss(opts: {
   texts: readonly TextElement[];
   captions?: CaptionTrack;
   faceOf: FaceOf;
+  cellRatioOf: CellRatioOf;
   defaultFace: string;
+  /** locale of the copy (caption lines do not end on its weak words) */
+  locale?: string;
 }): string {
+  const { width: W, height: H, faceOf, cellRatioOf } = opts;
   const events = [
-    ...opts.texts.flatMap((t) => textElementEvents(t, opts.faceOf, opts.width, opts.height)),
-    ...(opts.captions ? captionEvents(opts.captions, opts.faceOf, opts.width, opts.height) : []),
+    ...opts.texts.flatMap((t) => textElementEvents(t, faceOf, W, H, cellRatioOf)),
+    ...(opts.captions ? captionEvents(opts.captions, faceOf, W, H, cellRatioOf, opts.locale) : []),
   ];
   return buildAssDocument({
     width: opts.width,

@@ -1,5 +1,6 @@
 import { FileFontMeasurer } from "@cre/creative/node";
 import { describe, expect, it } from "vitest";
+import type { ShotClip } from "../contracts/media.ts";
 import type { ReelPlan } from "../contracts/plan.ts";
 import { PLATFORM_PROFILES } from "../contracts/profiles.ts";
 import { loadBrandProfile } from "./profiles.ts";
@@ -79,5 +80,39 @@ describe("text layout", () => {
       measurer,
     });
     expect(issues.map((i) => i.slot)).toContain("hook");
+  });
+
+  it("sets band text smaller when that keeps its panel off the product's top", () => {
+    const p = plan({ hook: "Poczekaj, aż się zaświeci", cta: "Link w bio", button: "Sprawdź cenę" });
+    Object.assign(p, { resolution: { width: 1080, height: 1920 } });
+    for (const s of p.shots) Object.assign(s, { preset: "hero_reveal", params: { focus: "whole" } });
+    const clips = (top: number): ShotClip[] =>
+      p.shots.map((s) => ({
+        shotId: s.id,
+        path: "",
+        durationMs: s.durationMs,
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        productTrack: [{ tMs: 0, rect: { x: 128, y: top, w: 824, h: 1160 } }],
+        cacheHit: false,
+        renderMs: 0,
+        encodeMs: 0,
+      }));
+    const platform = PLATFORM_PROFILES.tiktok;
+    const hookOf = (c?: ShotClip[]) =>
+      buildTextElements({ plan: p, brand, platform, measurer, ...(c ? { clips: c } : {}) }).elements.find(
+        (e) => e.id === "hook",
+      )!;
+    const preferred = hookOf();
+    expect(preferred).toMatchObject({ fontSizePx: 88, text: "Poczekaj, aż\nsię zaświeci" });
+    // product top at 364 (the e2e lamp's shade): one line at 71 px ends 12 px above it
+    const clear = hookOf(clips(364));
+    expect(clear.text).toBe("Poczekaj, aż się zaświeci");
+    expect(clear.fontSizePx).toBeGreaterThanOrEqual(54);
+    expect(clear.box.y + clear.box.h + 22).toBeLessThanOrEqual(364 - 12);
+    // a product far below the band changes nothing; one too high to clear keeps the preferred size (QA reports it)
+    expect(hookOf(clips(700))).toEqual(preferred);
+    expect(hookOf(clips(300))).toEqual(preferred);
   });
 });

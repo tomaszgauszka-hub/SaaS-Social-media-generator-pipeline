@@ -6,7 +6,7 @@ import type { CaptionTrack, ShotClip, TextElement, VoiceTrack } from "../contrac
 import type { ReelPlan } from "../contracts/plan.ts";
 import type { BrandProfile, PlatformProfile, Rect } from "../contracts/profiles.ts";
 import type { BudgetGate } from "../cost/tracker.ts";
-import { allRules, scoreReport, toPx } from "./checks.ts";
+import { allRules, productRectAt, scoreReport } from "./checks.ts";
 import { extractRepresentativeFrames, measureVideo } from "./measure.ts";
 import { DeterministicVisualQaProvider } from "./visual.ts";
 
@@ -26,6 +26,8 @@ export interface ReelQaInput {
   voice?: VoiceTrack;
   brand: BrandProfile;
   logoExpected: boolean;
+  /** where the composer drew the logo (composeLocalized's logoBox): checked against the text panels */
+  logoBox?: Rect;
   /** visual QA chain (API first); the deterministic provider is appended when missing */
   visualQa?: readonly VisualQaProvider[];
   budget: BudgetGate;
@@ -34,14 +36,19 @@ export interface ReelQaInput {
   threshold?: number;
 }
 
-/** Product box at a reel time, from the shot clip's product track (clip-local times). */
-export function productRectAt(plan: ReelPlan, clips: readonly ShotClip[], atMs: number): Rect | null {
-  const shot = plan.shots.find((s) => atMs >= s.startMs && atMs < s.startMs + s.durationMs);
-  const track = shot ? clips.find((c) => c.shotId === shot.id)?.productTrack : undefined;
-  if (!shot || !track?.length) return null;
-  const local = atMs - shot.startMs;
-  const best = track.reduce((a, b) => (Math.abs(b.tMs - local) < Math.abs(a.tMs - local) ? b : a));
-  return toPx(best.rect, plan.resolution.width, plan.resolution.height);
+/**
+ * Where a delivered reel's QA frames go: one directory per variant, locale AND platform — the platforms of a
+ * locale are different videos (layout, logo), and their manifests / contact sheets point at these frames.
+ */
+export function qaFrameDir(
+  workDir: string,
+  plan: Pick<ReelPlan, "metadata" | "language">,
+  platformId: string,
+) {
+  return path.join(
+    workDir,
+    `qa-${plan.metadata.variantKey}-${plan.language}-${platformId}`.replace(/[^A-Za-z0-9._-]/g, "_"),
+  );
 }
 
 export async function runReelQa(input: ReelQaInput): Promise<QaReport> {
@@ -51,10 +58,7 @@ export async function runReelQa(input: ReelQaInput): Promise<QaReport> {
   const frames = await extractRepresentativeFrames(
     input.videoPath,
     tech.durationMs || plan.durationMs,
-    path.join(
-      ctx.workDir,
-      `qa-${plan.metadata.variantKey}-${plan.language}`.replace(/[^A-Za-z0-9/._-]/g, "_"),
-    ),
+    qaFrameDir(ctx.workDir, plan, input.platform.id),
     undefined,
     ctx.signal ? { signal: ctx.signal } : {},
   );
@@ -68,6 +72,7 @@ export async function runReelQa(input: ReelQaInput): Promise<QaReport> {
     ...(input.voice ? { voice: input.voice } : {}),
     brand: input.brand,
     logoExpected: input.logoExpected,
+    ...(input.logoBox ? { logoBox: input.logoBox } : {}),
   });
   ctx.tracker.compute({ stage: "qa", label: "technical qa", wallMs: Date.now() - t0, scope: ctx.scope });
 

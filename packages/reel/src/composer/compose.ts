@@ -23,7 +23,7 @@ import {
   loudnormTarget,
   parseLoudnormJson,
 } from "./audio.ts";
-import { buildMasterArgs, logoOverlay } from "./master.ts";
+import { buildMasterArgs, logoOverlay, textBandTop } from "./master.ts";
 import { buildReelAss } from "./subtitles.ts";
 
 /**
@@ -53,6 +53,30 @@ export function fontFaceName(file: string): string {
     faceNames.set(file, name);
   }
   return name;
+}
+
+const cellRatios = new Map<string, number>();
+
+/**
+ * libass's \fs per em of a font file: it sizes a face by ascent + descent — the OS/2 win metrics (as
+ * VSFilter / GDI), else FreeType's own (hhea), else the typo metrics, else the bbox — over unitsPerEm.
+ * Inter: 2478 / 2048.
+ */
+export function fontCellRatio(file: string): number {
+  let ratio = cellRatios.get(file);
+  if (ratio === undefined) {
+    const f = fontkit.create(fs.readFileSync(file)) as fontkit.Font;
+    const os2 = (f as unknown as { "OS/2"?: Record<string, number> })["OS/2"];
+    const cell = [
+      (os2?.winAscent ?? 0) + (os2?.winDescent ?? 0),
+      f.ascent - f.descent,
+      (os2?.typoAscender ?? 0) - (os2?.typoDescender ?? 0),
+      f.bbox.maxY - f.bbox.minY,
+    ].find((h) => h > 0);
+    ratio = cell && f.unitsPerEm > 0 ? cell / f.unitsPerEm : 1;
+    cellRatios.set(file, ratio);
+  }
+  return ratio;
 }
 
 /** Copy the used font files into `<dir>/fonts` (libass `fontsdir`). */
@@ -286,15 +310,19 @@ export async function composeLocalized(input: ComposeLocalizedInput): Promise<Lo
       texts: input.texts,
       ...(input.captions ? { captions: input.captions } : {}),
       faceOf: fontFaceName,
+      cellRatioOf: fontCellRatio,
       defaultFace,
+      locale: plan.language,
     }),
   );
   const frameCount = Math.round((plan.durationMs * plan.fps) / 1000);
   await fsp.mkdir(path.dirname(input.outPath), { recursive: true });
   const logoWin = plan.branding.logo;
+  const textTop = textBandTop(input.texts, plan.resolution.height);
   const logo =
     input.logo && logoWin.enabled && logoWin.endMs > logoWin.startMs
       ? logoOverlay({
+          ...(textTop !== undefined ? { textTop } : {}),
           logo: { ...input.logo, ...(await logoSize(input.logo.path)), position: logoWin.position },
           window: logoWin,
           platform: input.platform,
