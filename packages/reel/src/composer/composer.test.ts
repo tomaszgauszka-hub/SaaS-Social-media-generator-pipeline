@@ -75,8 +75,12 @@ describe("master args", () => {
     });
     expect(o.box).toEqual({ x: 48, y: 164, w: 230, h: 56 });
     expect(o.inputArgs).toEqual(["-loop", "1", "-framerate", "30", "-t", "6.000", "-i", "/l.png"]);
+    // a blurred alpha halo goes under the logo, then the logo itself on top
     expect(o.graph[1]).toBe(
-      "[0:v][logo]overlay=x=48:y=164:enable='between(t,0.000,5.000)':eof_action=pass[lg]",
+      "[lg_ls]pad=254:80:12:12:color=black@0,colorchannelmixer=rr=0:gg=0:bb=0:aa=0.55,boxblur=6:1[lg_sh]",
+    );
+    expect(o.graph[3]).toBe(
+      "[lg_bg][lg_lg]overlay=x=48:y=164:enable='between(t,0.000,5.000)':eof_action=pass[lg]",
     );
     const ytp = PLATFORM_PROFILES.youtube_shorts;
     const yt = logoOverlay({

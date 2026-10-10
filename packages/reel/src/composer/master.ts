@@ -84,6 +84,9 @@ export interface MasterArgs {
  * (alpha, scaled to `widthPx`, smaller when a top logo would reach the text band) outside the platform's UI
  * zones with a short alpha fade over the logo window.
  */
+/** halo margin around the logo (px): the blurred alpha shadow lives inside it */
+const HALO = 12;
+
 export function logoOverlay(o: {
   logo: LogoInput;
   window: { startMs: number; endMs: number };
@@ -113,10 +116,15 @@ export function logoOverlay(o: {
       "-i",
       o.logo.path,
     ],
+    // a soft dark halo (the logo's own alpha, blurred) keeps a light logo legible on a bright frame
     graph: [
       `[${o.inputIndex}:v]format=rgba,scale=${box.w}:${box.h}:flags=lanczos,` +
-        `fade=t=in:st=${s.toFixed(3)}:d=${fade.toFixed(3)}:alpha=1,fade=t=out:st=${(e - fade).toFixed(3)}:d=${fade.toFixed(3)}:alpha=1[logo]`,
-      `[${o.inLabel}][logo]overlay=x=${Math.round(box.x)}:y=${Math.round(box.y)}:enable='between(t,${s.toFixed(3)},${e.toFixed(3)})':eof_action=pass[${o.outLabel}]`,
+        `fade=t=in:st=${s.toFixed(3)}:d=${fade.toFixed(3)}:alpha=1,fade=t=out:st=${(e - fade).toFixed(3)}:d=${fade.toFixed(3)}:alpha=1,` +
+        `split[${o.outLabel}_lg][${o.outLabel}_ls]`,
+      `[${o.outLabel}_ls]pad=${box.w + 2 * HALO}:${box.h + 2 * HALO}:${HALO}:${HALO}:color=black@0,` +
+        `colorchannelmixer=rr=0:gg=0:bb=0:aa=0.55,boxblur=${HALO / 2}:1[${o.outLabel}_sh]`,
+      `[${o.inLabel}][${o.outLabel}_sh]overlay=x=${Math.round(box.x) - HALO + 1}:y=${Math.round(box.y) - HALO + 2}:enable='between(t,${s.toFixed(3)},${e.toFixed(3)})':eof_action=pass[${o.outLabel}_bg]`,
+      `[${o.outLabel}_bg][${o.outLabel}_lg]overlay=x=${Math.round(box.x)}:y=${Math.round(box.y)}:enable='between(t,${s.toFixed(3)},${e.toFixed(3)})':eof_action=pass[${o.outLabel}]`,
     ],
     box,
   };
