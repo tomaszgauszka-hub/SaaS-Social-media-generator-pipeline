@@ -28,7 +28,8 @@ export interface CaptionIssue {
 
 export type CaptionTrackResult = CaptionTrack & { issues: CaptionIssue[] };
 
-const WEAK_WORDS: Record<string, ReadonlySet<string>> = {
+/** words a phrase (or caption line) should not end on, per language */
+export const WEAK_WORDS: Record<string, ReadonlySet<string>> = {
   en: new Set(
     "a an the to of and or for with in on at by from your my our its is are as that this".split(" "),
   ),
@@ -41,15 +42,32 @@ const WEAK_WORDS: Record<string, ReadonlySet<string>> = {
   it: new Set("il lo la i gli le un una e o di del a al in con per è".split(" ")),
 };
 
-const SENTENCE_END = /[.!?…]["»”']?$/;
-const CLAUSE_END = /[,;:–—]["»”']?$/;
+// closing quotes: " ' ” (en, pl) “ ‘ (de) ’ » › and a closing bracket
+const SENTENCE_END = /[.!?…]["'”“’‘»›)]*$/u;
+const CLAUSE_END = /[,;:–—]["'”“’‘»›)]*$/u;
+const TRAILING = /[\s"'”“’‘»›),.;:…–—-]+$/u;
+/** languages that write ordinals as a number with a dot ("die 3. Generation", "3. generacja") */
+const ORDINAL_DOT = new Set(["de", "pl", "cs", "sk", "da", "no", "nb", "fi", "hu", "hr", "sl", "sr", "tr"]);
 
-/** caption form of a word: no leading quotes, no trailing , . ; : … – (a ? or ! stays) */
-export function captionWord(text: string): string {
-  return text
-    .replace(/^["'„“«»(]+/u, "")
-    .replace(/[\s"'”»)]*[,.;:…–—-]+["'”»)]*$/u, "")
-    .trim();
+/** "3." in a language that writes ordinals with a dot: a number, not the end of a sentence */
+function isOrdinal(text: string, lang: string): boolean {
+  return ORDINAL_DOT.has(lang) && /^\d+\.$/.test(text.replace(/^["'„“«»‚‘‹(]+/u, ""));
+}
+
+/**
+ * caption form of a word: no leading / closing quotes, no trailing , . ; : … – (a ? or ! stays); a suspended
+ * hyphen ("Lese- und Stehlampe") and an ordinal dot ("3. Generation", in `lang`s that write one) stay
+ */
+export function captionWord(text: string, lang = ""): string {
+  const word = text.trim().replace(/^["'„“«»‚‘‹(]+/u, "");
+  const tail = TRAILING.exec(word)?.[0] ?? "";
+  const core = word.slice(0, word.length - tail.length);
+  const keep =
+    (tail.startsWith("-") && /[\p{L}\p{N}]$/u.test(core)) ||
+    (tail.startsWith(".") && isOrdinal(`${core}.`, lang))
+      ? tail[0]!
+      : "";
+  return `${core}${keep}`.trim();
 }
 
 interface Tok {
@@ -191,9 +209,10 @@ export function buildCaptionTrack(opts: {
     .sort((a, b) => a.startMs - b.startMs);
 
   const toks: Tok[] = words.flatMap((w) => {
-    const shown = captionWord(w.text);
+    const shown = captionWord(w.text, lang);
     if (!shown) return [];
-    return [{ word: w, shown, sentenceEnd: SENTENCE_END.test(w.text), clauseEnd: CLAUSE_END.test(w.text) }];
+    const sentenceEnd = SENTENCE_END.test(w.text) && !isOrdinal(w.text, lang);
+    return [{ word: w, shown, sentenceEnd, clauseEnd: CLAUSE_END.test(w.text) }];
   });
   const maxLines = style === "minimal_lower" ? 1 : 2;
   const maxChars = platform.captions.maxCharsPerLine;

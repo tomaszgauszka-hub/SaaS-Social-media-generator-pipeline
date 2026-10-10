@@ -13,13 +13,14 @@ import { language, speechText } from "./text.ts";
 /**
  * ElevenLabs voice for the reel, wrapping the existing @cre/providers ElevenLabsTTSProvider (character-level
  * timestamps → exact word timings). Model id from configuration; voice per persona / locale or
- * ELEVENLABS_VOICE_ID. The clip is resampled to 48 kHz mono without trimming (the word timings stay valid);
- * a pace other than 1 is applied with atempo and the word timings are scaled with it. Cached by
- * (model, voice, text, pace); every paid call is recorded with its pre-call estimate.
+ * ELEVENLABS_VOICE_ID. The paid take is resampled to 48 kHz mono without trimming (the word timings stay
+ * valid) and cached by (model, voice, text) — the request does not depend on the pace; a pace other than 1 is
+ * applied locally with atempo (cached next to the take) and the word timings are scaled with it, so a pace
+ * change never pays for the same audio again. Every paid call is recorded with its pre-call estimate.
  */
 
 export const ELEVENLABS_VOICE_PROVIDER = "elevenlabs";
-export const ELEVENLABS_VOICE_VERSION = "elevenlabs-voice/1";
+export const ELEVENLABS_VOICE_VERSION = "elevenlabs-voice/2";
 const NS = "voice.elevenlabs";
 
 /** languages of the multilingual Flash / Turbo v2.5 models */
@@ -87,9 +88,9 @@ export class ElevenLabsVoiceProvider implements VoiceProvider {
     const voice = this.voiceFor(req);
     const text = speechText(req.text);
     if (!text) throw new FatalError("elevenlabs: empty text");
-    const tempo = Math.min(1.4, Math.max(0.7, req.pace));
+    const tempo = Math.round(Math.min(1.4, Math.max(0.7, req.pace)) * 1000) / 1000;
     const cache = new FileCache(ctx.cacheDir);
-    const key = cacheKey(NS, ELEVENLABS_VOICE_VERSION, { model: this.model, voice, text, tempo });
+    const key = cacheKey(NS, ELEVENLABS_VOICE_VERSION, { model: this.model, voice, text });
     let meta = await cache.readJson<Meta>(NS, key, "meta.json");
     const cached = Boolean(meta && cache.has(NS, key, "voice.wav"));
     if (cached) {
@@ -128,7 +129,6 @@ export class ElevenLabsVoiceProvider implements VoiceProvider {
           await processVoice(out.filePath, tmp, {
             voiceChain: false,
             trim: false,
-            tempo,
             ...(ctx.signal ? { signal: ctx.signal } : {}),
           });
         } finally {
@@ -137,8 +137,8 @@ export class ElevenLabsVoiceProvider implements VoiceProvider {
         const words = out.timingsExact
           ? out.words.map((w) => ({
               text: w.text,
-              startMs: Math.round(w.startMs / tempo),
-              endMs: Math.round(w.endMs / tempo),
+              startMs: Math.round(w.startMs),
+              endMs: Math.round(w.endMs),
             }))
           : undefined;
         meta = { durationMs: 0, voice, characters: text.length, ...(words ? { words } : {}) };
@@ -149,9 +149,36 @@ export class ElevenLabsVoiceProvider implements VoiceProvider {
       };
       await cache.writeJson(NS, key, meta, "meta.json");
     }
-    const m = meta!;
+    let file = cache.file(NS, key, "voice.wav");
+    let m = meta!;
+    if (tempo !== 1) {
+      // the pace, locally (free, deterministic) from the cached take
+      const take = file;
+      const res = await cache.getOrCreate(NS, key, `voice-x${tempo}.wav`, async (tmp) => {
+        await processVoice(take, tmp, {
+          voiceChain: false,
+          trim: false,
+          tempo,
+          ...(ctx.signal ? { signal: ctx.signal } : {}),
+        });
+      });
+      file = res.path;
+      m = {
+        ...m,
+        durationMs: parseWav(await fsp.readFile(file))?.durationMs ?? Math.round(m.durationMs / tempo),
+        ...(m.words
+          ? {
+              words: m.words.map((w) => ({
+                text: w.text,
+                startMs: Math.round(w.startMs / tempo),
+                endMs: Math.round(w.endMs / tempo),
+              })),
+            }
+          : {}),
+      };
+    }
     return {
-      path: cache.file(NS, key, "voice.wav"),
+      path: file,
       durationMs: m.durationMs,
       ...(m.words ? { words: m.words } : {}),
       voice: m.voice,

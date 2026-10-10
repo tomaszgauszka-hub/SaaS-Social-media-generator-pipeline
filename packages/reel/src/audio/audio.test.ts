@@ -137,4 +137,28 @@ describe("word timing", () => {
     },
     120_000,
   );
+
+  it.skipIf(!hasPiper)(
+    "Piper takes have deterministic durations (no random phoneme lengths), faster is shorter",
+    async () => {
+      const piper = new PiperVoiceProvider();
+      const text = "Orzechowa podstawa, mosiężny trzon i abażur z tkaniny.";
+      const speak = (pace: number) =>
+        piper.speak(
+          {
+            text,
+            locale: "pl-PL",
+            persona: { id: "p", description: "d", style: "warm", pace: 1, gender: "female", voices: {} },
+            pace,
+            style: "warm",
+          },
+          ctx(), // a fresh cache each time: a new synthesis
+        );
+      const [a, b, fast] = [await speak(1), await speak(1), await speak(1.15)];
+      // with the voice's default noise_w 0.8 the same line varied by up to 1 s from take to take
+      expect(Math.abs(a.durationMs - b.durationMs)).toBeLessThan(60);
+      expect(fast.durationMs).toBeLessThan(a.durationMs - 150);
+    },
+    120_000,
+  );
 });

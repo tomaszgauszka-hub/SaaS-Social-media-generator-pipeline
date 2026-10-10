@@ -6,7 +6,8 @@ import { language, pauseAfter, wordTokens, wordWeight } from "./text.ts";
  * Local, deterministic forced alignment for TTS clips without word timings:
  *
  *   1. energy voice-activity detection on the PCM (10 ms frames, adaptive threshold with hysteresis, short
- *      closures inside words bridged) → speech regions;
+ *      closures inside words bridged) → speech regions; a fragment shorter than a syllable (a stop release,
+ *      the onset of an affricate) joins its nearest neighbour, so no word is forced into it;
  *   2. the script's words are assigned to regions in order by dynamic programming: a region's duration should
  *      match its words' speaking weight (syllables), and pauses should fall after punctuation;
  *   3. inside a region, words share its time by weight; the first / last word snap to the region edges.
@@ -90,6 +91,36 @@ export function estimateWords(text: string, durationMs: number, locale = "en", o
     t = end + p[i]! * unit;
     return { text, startMs: Math.round(start), endMs: Math.round(end) };
   });
+}
+
+/**
+ * Join every region shorter than `minMs` to its nearer neighbour (across a gap ≤ `maxGapMs`): a fragment that
+ * short is part of a word (Piper's Polish "Link" can come out as "Lin" 140 ms + a 60 ms "k" release), and the
+ * assignment would otherwise have to give it a whole word ("znajdziesz" squeezed into the 60 ms).
+ */
+export function absorbShortRegions(
+  regions: readonly SpeechRegion[],
+  minMs = 150,
+  maxGapMs = 200,
+): SpeechRegion[] {
+  const r = regions.map((x) => ({ ...x }));
+  const len = (x: SpeechRegion) => x.endMs - x.startMs;
+  for (;;) {
+    // the shortest fragment with a neighbour close enough (an isolated short region is a word of its own)
+    let k = -1;
+    let j = -1;
+    for (let i = 0; i < r.length; i++) {
+      if (len(r[i]!) >= minMs || (k >= 0 && len(r[i]!) >= len(r[k]!))) continue;
+      const before = i > 0 ? r[i]!.startMs - r[i - 1]!.endMs : Number.POSITIVE_INFINITY;
+      const after = i < r.length - 1 ? r[i + 1]!.startMs - r[i]!.endMs : Number.POSITIVE_INFINITY;
+      if (Math.min(before, after) > maxGapMs) continue;
+      k = i;
+      j = before <= after ? i - 1 : i + 1;
+    }
+    if (k < 0) return r;
+    const a = Math.min(j, k);
+    r.splice(a, 2, { startMs: r[a]!.startMs, endMs: r[a + 1]!.endMs });
+  }
 }
 
 /** merge the closest regions until there are at most `max` */
@@ -179,7 +210,7 @@ export function alignWordsToPcm(
   const lang = language(locale);
   const weights = words.map((w) => wordWeight(w, lang));
   const breaks = words.map((w) => pauseAfter(w));
-  const regions = mergeRegions(detected, words.length);
+  const regions = mergeRegions(absorbShortRegions(detected), words.length);
   const starts = assignWords(weights, breaks, regions);
   const out: WordTime[] = [];
   regions.forEach((reg, r) => {

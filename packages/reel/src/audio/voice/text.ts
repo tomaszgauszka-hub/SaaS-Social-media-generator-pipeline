@@ -45,10 +45,10 @@ export function syllables(word: string, lang = "en"): number {
   return Math.max(1, count + Math.round(digits * 1.6));
 }
 
-/** pause after a word (in syllable units) from its trailing punctuation */
+/** pause after a word (in syllable units) from its trailing punctuation (none for a suspended "Lese-") */
 export function pauseAfter(word: string): number {
-  if (/[.!?…]["»”']?$/.test(word)) return 1.4;
-  if (/[,;:–—-]["»”']?$/.test(word)) return 0.7;
+  if (/[.!?…]["'”“’‘»›)]*$/u.test(word)) return 1.4;
+  if (/(?:[,;:–—]|\s-)["'”“’‘»›)]*$/u.test(word)) return 0.7;
   return 0;
 }
 

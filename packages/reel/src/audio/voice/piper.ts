@@ -15,13 +15,18 @@ import { language, speechText } from "./text.ts";
 /**
  * Piper — local neural TTS (rhasspy/piper, ONNX voices). The text goes in on stdin (never as an argument),
  * the binary runs without a shell from its own directory (it loads espeak-ng / onnxruntime from there), the
- * pace maps to --length_scale, and the clip is resampled to 48 kHz with light voice processing. Voices are
+ * pace maps to --length_scale, and the clip is resampled to 48 kHz with light voice processing. Phoneme
+ * durations are deterministic (--noise_w 0; the voice's own default 0.8 makes every take a different length,
+ * so a "faster" take could come out longer), the generator noise is pinned to the trained 0.667. Voices are
  * model files in PIPER_VOICES_DIR referenced by base name only; the brand persona may pick one per locale or
  * language (persona.voices.piper["pl-PL" | "pl"]), otherwise the defaults below apply.
  */
 
 export const PIPER_PROVIDER = "piper";
-export const PIPER_VERSION = "piper-1.2/1";
+export const PIPER_VERSION = "piper-1.2/2";
+/** VITS sampling noise: generator (timbre / prosody texture) and phoneme-width (duration) noise */
+export const PIPER_NOISE_SCALE = 0.667;
+export const PIPER_NOISE_W = 0;
 const NS = "voice.piper";
 
 /** default voice per language (files `<name>.onnx` + `<name>.onnx.json` in the voices directory) */
@@ -112,6 +117,7 @@ export class PiperVoiceProvider implements VoiceProvider {
       voiceBytes: fs.statSync(model).size,
       text,
       lengthScale: scale,
+      noise: [PIPER_NOISE_SCALE, PIPER_NOISE_W],
       chain: VOICE_CHAIN_VERSION,
     });
     const started = Date.now();
@@ -129,6 +135,10 @@ export class PiperVoiceProvider implements VoiceProvider {
             raw,
             "--length_scale",
             String(scale),
+            "--noise_scale",
+            String(PIPER_NOISE_SCALE),
+            "--noise_w",
+            String(PIPER_NOISE_W),
             "--sentence_silence",
             "0.15",
             "--quiet",

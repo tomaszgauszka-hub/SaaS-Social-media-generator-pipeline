@@ -16,24 +16,27 @@ import { BudgetGate, CostTracker } from "../../cost/tracker.ts";
 import { decodeAudio, msToSamples, REEL_SR, writeWav16 } from "../pcm.ts";
 import { fadeEdges, limit } from "../synth.ts";
 import { alignWordsToPcm, detectSpeech, type SpeechRegion } from "./align.ts";
-import { SPEECH_RMS_DB, speechRms } from "./process.ts";
+import { processVoice, SPEECH_RMS_DB, speechRms } from "./process.ts";
 import { wordTokens } from "./text.ts";
 
 /**
  * Voice-over for one locale on the reel timeline:
  *
  *   each plan.voiceover segment (copy.slots[slot].text) → voice chain (the provider that voiced the first
- *   segment is tried first for the rest, so the reel keeps one voice) → speech onset / offset by VAD →
+ *   segment is tried first for the rest; a paid provider is tried only if the budget covers every line it
+ *   would voice, so the budget never switches the speaker mid-reel; a line that falls back anyway → the
+ *   earlier lines are re-voiced by its provider, else a VOICE_MIXED issue) → speech onset / offset by VAD →
  *   placement: the first syllable on segment.atMs, segments in order with ≥ gapMs between them (later when
  *   the previous one is still talking), all speech inside plan.durationMs − endMarginMs (pulled earlier only
- *   when needed). Too long even so → every segment is re-synthesised faster (up to pace 1.15) → still too long
- *   → a VOICE_OVERFLOW issue (words are never cut by this module).
+ *   when needed). Too long even so → faster, up to pace 1.15: local voices re-synthesise (the shorter take is
+ *   kept), whatever is still too long is time-stretched locally (atempo) — a pace change never buys a new
+ *   paid take → still too long → a VOICE_OVERFLOW issue (a blocker when words would fall past the end).
  *   Word timings: provider words → transcription chain (when its words match the script) → local alignment.
  *   Clips are levelled to −19 dBFS speech RMS and summed into ONE mono WAV of exactly plan.durationMs.
  */
 
 export interface VoiceTrackIssue {
-  code: "VOICE_OVERFLOW" | "VOICE_SLOT_MISSING" | "VOICE_SHIFTED" | "VOICE_PACE_RAISED";
+  code: "VOICE_OVERFLOW" | "VOICE_SLOT_MISSING" | "VOICE_SHIFTED" | "VOICE_PACE_RAISED" | "VOICE_MIXED";
   severity: "blocker" | "major" | "minor";
   message: string;
   slot?: string;
@@ -207,24 +210,39 @@ export async function buildVoiceTrack(opts: {
   }
 
   let chain = opts.voiceChain.map((p) => forLocale(p, locale));
-  const speak = async (text: string, pace: number, providers: readonly VoiceProvider[]) => {
-    const req: VoiceRequest = { text, locale, persona, pace, style: plan.voiceover.style };
-    const outcome = await runChain({
+  const request = (text: string, pace: number): VoiceRequest => ({
+    text,
+    locale,
+    persona,
+    pace,
+    style: plan.voiceover.style,
+  });
+  /** `lines(p)`: every line `p` would voice once picked — a paid one is tried only if it affords them all */
+  const speak = (
+    text: string,
+    pace: number,
+    providers: readonly VoiceProvider[],
+    lines: (p: VoiceProvider) => readonly string[] = () => [text],
+  ) => {
+    const req = request(text, pace);
+    return runChain({
       capability: "voice",
       providers,
       budget,
-      estimate: (p) => p.estimateMicros(req),
+      estimate: (p) => lines(p).reduce((sum, t) => sum + p.estimateMicros(request(t, pace)), 0),
       run: (p) => p.speak(req, ctx),
       ...(signal ? { signal } : {}),
     });
-    return outcome;
   };
 
   // 1. synthesise every segment (sticky provider)
   let pace = plan.voiceover.pace;
   const clips: Clip[] = [];
-  for (const seg of segments) {
-    const outcome = await speak(seg.text, pace, chain);
+  const all = segments.map((s) => s.text);
+  for (const [i, seg] of segments.entries()) {
+    // the current voice has the rest of the lines to say; another one would re-voice the earlier ones too
+    const current = clips[i - 1]?.provider.name;
+    const outcome = await speak(seg.text, pace, chain, (p) => (p.name === current ? all.slice(i) : all));
     if (outcome.fallback) fallbacks.push(outcome.fallback);
     const winner = outcome.provider;
     chain = [winner, ...chain.filter((p) => p.name !== winner.name)];
@@ -236,8 +254,65 @@ export async function buildVoiceTrack(opts: {
     });
   }
 
-  // 2. placement; too long → faster re-synthesis (same provider) → placement again
-  const items = () => clips.map((c) => ({ atMs: c.atMs, speechMs: c.speechEndMs - c.speechStartMs }));
+  // 1b. one speaker: a later line fell back → the earlier lines are re-voiced by its provider (known to work)
+  const final = clips[clips.length - 1]!.provider;
+  const revoice = clips.flatMap((c, i) => (c.provider.name === final.name ? [] : [i]));
+  for (const [k, i] of revoice.entries()) {
+    const c = clips[i]!;
+    try {
+      const rest = revoice.slice(k).map((j) => clips[j]!.text);
+      const outcome = await speak(c.text, pace, [final], () => rest);
+      clips[i] = {
+        ...c,
+        result: outcome.result,
+        provider: final,
+        ...(await analyse(outcome.result, signal)),
+      };
+    } catch (e) {
+      ctx.logger?.warn(
+        { slot: c.slot, err: e instanceof Error ? e.message : String(e) },
+        "re-voicing failed",
+      );
+    }
+  }
+  const voices = [...new Set(clips.map((c) => c.provider.name))];
+  if (voices.length > 1)
+    issues.push({
+      code: "VOICE_MIXED",
+      severity: "major",
+      message: `voice-over changes speaker mid-reel (${voices.join(", ")}): re-voicing with ${final.name} failed`,
+    });
+
+  /** time-stretch a clip locally (atempo; provider word timings scale with it) */
+  const stretch = async (c: Clip, tempo: number): Promise<Clip> => {
+    const out = path.join(
+      ctx.workDir,
+      `voice-${locale}-${sha256Hex(stableStringify({ v: VOICE_TRACK_VERSION, src: c.result.path, tempo })).slice(0, 12)}-fit.wav`,
+    );
+    const p = await processVoice(c.result.path, out, {
+      voiceChain: false,
+      trim: false,
+      tempo,
+      ...(signal ? { signal } : {}),
+    });
+    const scaled = c.result.words?.map((w) => ({
+      text: w.text,
+      startMs: Math.round(w.startMs / tempo),
+      endMs: Math.round(w.endMs / tempo),
+    }));
+    const result: VoiceResult = {
+      ...c.result,
+      path: out,
+      durationMs: p.durationMs,
+      ...(scaled ? { words: scaled } : {}),
+    };
+    return { ...c, result, ...(await analyse(result, signal)) };
+  };
+
+  // 2. placement; too long → faster (local re-synthesis, kept only when shorter → local stretch to the target
+  //    length) → placement again
+  const speechOf = (c: Clip) => c.speechEndMs - c.speechStartMs;
+  const items = () => clips.map((c) => ({ atMs: c.atMs, speechMs: speechOf(c) }));
   let placed = placeSegments(items(), limitMs, gapMs);
   const maxPace = Math.max(MAX_FIT_PACE, plan.voiceover.pace);
   if (placed.overflowMs > 0 && pace < maxPace - 0.005) {
@@ -246,15 +321,26 @@ export async function buildVoiceTrack(opts: {
     const faster = Math.min(maxPace, Math.round(pace * needed * 1.03 * 100) / 100);
     if (faster > pace) {
       for (const [i, c] of clips.entries()) {
-        try {
-          const outcome = await speak(c.text, faster, [c.provider]);
-          clips[i] = { ...c, result: outcome.result, ...(await analyse(outcome.result, signal)) };
-        } catch (e) {
-          ctx.logger?.warn(
-            { slot: c.slot, err: e instanceof Error ? e.message : String(e) },
-            "faster re-synthesis failed",
-          );
-        }
+        const target = (speechOf(c) * pace) / faster;
+        const warn = (e: unknown, what: string) =>
+          ctx.logger?.warn({ slot: c.slot, err: e instanceof Error ? e.message : String(e) }, what);
+        let fit = c;
+        // a native-rate take sounds best (free for local voices); a faster pace may not give shorter speech
+        if (c.provider.local)
+          try {
+            const outcome = await speak(c.text, faster, [c.provider]);
+            const take: Clip = { ...c, result: outcome.result, ...(await analyse(outcome.result, signal)) };
+            if (speechOf(take) < speechOf(fit)) fit = take;
+          } catch (e) {
+            warn(e, "faster re-synthesis failed");
+          }
+        if (speechOf(fit) > target * 1.02)
+          try {
+            fit = await stretch(fit, Math.round((speechOf(fit) / target) * 1000) / 1000);
+          } catch (e) {
+            warn(e, "voice time-stretch failed");
+          }
+        clips[i] = fit;
       }
       issues.push({
         code: "VOICE_PACE_RAISED",
@@ -266,12 +352,14 @@ export async function buildVoiceTrack(opts: {
     }
   }
   if (placed.overflowMs > 0) {
+    // inside the end margin it is only tight; past plan.durationMs the last words are cut off the reel
+    const cutMs = limitMs + placed.overflowMs - plan.durationMs;
     issues.push({
       code: "VOICE_OVERFLOW",
-      severity: "major",
-      message: `voice-over is ${placed.overflowMs} ms too long for the reel at pace ${pace} — shorten ${clips
-        .map((c) => c.slot)
-        .join(", ")}`,
+      severity: cutMs > 0 ? "blocker" : "major",
+      message: `voice-over is ${placed.overflowMs} ms too long for the reel at pace ${pace}${
+        cutMs > 0 ? ` (its last ${cutMs} ms are cut off)` : ""
+      } — shorten ${clips.map((c) => c.slot).join(", ")}`,
       atMs: limitMs,
     });
   }
