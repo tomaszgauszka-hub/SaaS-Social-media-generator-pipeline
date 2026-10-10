@@ -190,15 +190,18 @@ class CompositionTest(unittest.TestCase):
         self.assertEqual(shotlib.composition("macro_push", {"focus": "top"}).focus, "top")
         self.assertEqual(shotlib.composition("orbit", {}).focus, "whole")
 
-    def test_close_up_of_a_thin_part_frames_the_widest_band(self):
-        # marble cube base 0.2 m wide, thin rod 0.01 m, shade 0.25 m: a macro of the rod is a blur
-        widths = {"base": 0.20, "middle": 0.01, "top": 0.25, "detail": 0.2}
-        focus, note = shotlib.macro_focus("middle", widths, 0.25)
-        self.assertEqual(focus, "top")
-        self.assertIn("thin middle band", note)
-        self.assertEqual(shotlib.macro_focus("base", widths, 0.25), ("base", None))
-        # nothing wide enough anywhere: keep what the plan asked for
-        self.assertEqual(shotlib.macro_focus("middle", {"base": 0.01, "middle": 0.01}, 0.25), ("middle", None))
+    def test_close_up_of_a_thin_part_moves_to_the_nearest_wide_run(self):
+        # marble-cube lamp, 20 slices: cube 0-0.15, thin rod 0.15-0.6, shade 0.6-1.0
+        widths = [0.11] * 3 + [0.01] * 9 + [0.21] * 8
+        z0, z1, note = shotlib.refine_band(0.0, 0.38, widths)  # "base": most of it is rod
+        self.assertEqual((round(z0, 3), round(z1, 3)), (0.0, 0.15))
+        self.assertIn("thin band", note)
+        z0, z1, _ = shotlib.refine_band(0.3, 0.7, widths)  # "middle": the nearest wide run is the shade
+        self.assertEqual((round(z0, 3), round(z1, 3)), (0.6, 1.0))
+        # a wide band stays as planned
+        self.assertEqual(shotlib.refine_band(0.62, 1.0, widths), (0.62, 1.0, None))
+        # nothing wide anywhere: keep the plan
+        self.assertEqual(shotlib.refine_band(0.3, 0.7, [0.0] * 20)[2], None)
 
     def test_plan_can_move_the_product_down_for_a_text_panel(self):
         self.assertEqual(shotlib.composition("silhouette_reveal", {}).center_y, 0.5)

@@ -63,6 +63,8 @@ class ProductModel:
     emissive: list[EmissiveTarget] = field(default_factory=list)
     emissive_mode: str = "none"
     bulb: tuple[float, float, float] | None = None
+    #: points sampled on the surface by area (pivot space): width profiles that vertices alone cannot give
+    surface: np.ndarray | None = None
 
     @property
     def size(self) -> float:
@@ -102,6 +104,40 @@ def _world_vertices(obj: bpy.types.Object, depsgraph) -> np.ndarray:
         ev.to_mesh_clear()
     m = np.array(ev.matrix_world, dtype=np.float64)
     return co @ m[:3, :3].T + m[:3, 3]
+
+
+def _world_triangles(obj: bpy.types.Object, depsgraph) -> np.ndarray:
+    """(T, 3, 3) world-space triangles of an object's evaluated mesh."""
+    ev = obj.evaluated_get(depsgraph)
+    mesh = ev.to_mesh()
+    try:
+        mesh.calc_loop_triangles()
+        nv, nt = len(mesh.vertices), len(mesh.loop_triangles)
+        co = np.empty(nv * 3, dtype=np.float64)
+        mesh.vertices.foreach_get("co", co)
+        idx = np.empty(nt * 3, dtype=np.int64)
+        mesh.loop_triangles.foreach_get("vertices", idx)
+    finally:
+        ev.to_mesh_clear()
+    m = np.array(ev.matrix_world, dtype=np.float64)
+    co = co.reshape(nv, 3) @ m[:3, :3].T + m[:3, 3]
+    return co[idx.reshape(nt, 3)] if nt else np.zeros((0, 3, 3))
+
+
+def surface_samples(tris: np.ndarray, n: int = 6000, seed: int = 7) -> np.ndarray:
+    """`n` points spread over the triangles by area (deterministic): the product's surface, not its vertices."""
+    if not len(tris):
+        return np.zeros((0, 3))
+    area = 0.5 * np.linalg.norm(np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0]), axis=1)
+    if area.sum() <= 0:
+        return tris.reshape(-1, 3)
+    rng = np.random.default_rng(seed)
+    pick = rng.choice(len(tris), size=n, p=area / area.sum())
+    u = rng.random((n, 2))
+    flip = u.sum(axis=1) > 1
+    u[flip] = 1 - u[flip]
+    t = tris[pick]
+    return t[:, 0] + u[:, :1] * (t[:, 1] - t[:, 0]) + u[:, 1:] * (t[:, 2] - t[:, 0])
 
 
 def _has_surface(obj: bpy.types.Object, depsgraph) -> bool:
@@ -181,6 +217,8 @@ def import_product(path: str, fmt: str, real_height_m: float | None, emits_light
                           start, start + len(v)))
         start += len(v)
     points = np.concatenate(chunks)
+    tris = [t for t in (_world_triangles(o, dg) for o in meshes) if len(t)]
+    surface = surface_samples(np.concatenate(tris)) if tris else None
     if len(parts) >= 2:
         for k, part in enumerate(parts):
             off = bpy.data.objects.new(f"PartOffset_{k:02d}", None)
@@ -203,6 +241,7 @@ def import_product(path: str, fmt: str, real_height_m: float | None, emits_light
         height=float(points[:, 2].max()),
         radius=float(np.hypot(points[:, 0], points[:, 1]).max()),
         scale_applied=s,
+        surface=surface,
     )
     if emits_light:
         _find_emissive(model, new, hints)

@@ -231,3 +231,21 @@ class PlanShotTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(HAVE_BPY, "needs bpy (.tools/blender-venv)")
+class SurfaceSampleTest(unittest.TestCase):
+    def test_samples_cover_faces_by_area_not_vertices(self):
+        import numpy as np
+
+        # a 1 x 1 square (two triangles) at z 0 and a tall 0.01-wide strip from z 0 to 1: a cube face and a rod
+        sq = [[(0, 0, 0), (1, 0, 0), (1, 1, 0)], [(0, 0, 0), (1, 1, 0), (0, 1, 0)]]
+        rod = [[(0, 0, 0), (0.01, 0, 0), (0.01, 0, 1)], [(0, 0, 0), (0.01, 0, 1), (0, 0, 1)]]
+        pts = product_import.surface_samples(np.array(sq + rod, dtype=float), n=2000)
+        self.assertEqual(pts.shape, (2000, 3))
+        on_rod = pts[pts[:, 2] > 1e-6]
+        # the rod has 1 % of the area: ~20 samples, spread along its whole height (no empty middle)
+        self.assertGreater(len(on_rod), 5)
+        self.assertLess(len(on_rod), 60)
+        self.assertGreater(np.ptp(on_rod[:, 2]), 0.5)
+        np.testing.assert_array_equal(pts, product_import.surface_samples(np.array(sq + rod, dtype=float), n=2000))

@@ -198,15 +198,35 @@ def focus_band(focus: str) -> tuple[float, float]:
     }[focus]
 
 
-def macro_focus(focus: str, widths: dict[str, float], product_width: float, min_share: float = 0.3) -> tuple[str, str | None]:
-    """A close-up of a part much narrower than the product (a thin lamp rod) is an abstract blur, not a detail:
-    frame the widest band instead. `widths` = horizontal extent of each focus band. Returns (focus, note)."""
-    if product_width <= 0 or widths.get(focus, 0.0) >= min_share * product_width:
-        return focus, None
-    best = max(("base", "top", "middle", "detail"), key=lambda f: widths.get(f, 0.0))
-    if widths.get(best, 0.0) < min_share * product_width:
-        return focus, None
-    return best, f"close-up of a thin {focus} band ({widths.get(focus, 0.0) / product_width:.0%} of the product width) framed on the {best} instead"
+def refine_band(
+    z0: float, z1: float, widths: list[float], min_share: float = 0.3, min_height: float = 0.08
+) -> tuple[float, float, str | None]:
+    """A close-up of a part much narrower than the product (a thin lamp rod) is an abstract blur, not a detail.
+    `widths` = the product's horizontal extent in equal height slices (bottom → top). When the requested band is
+    mostly thin, the close-up moves to the nearest run of wide slices (a lamp's base → its marble cube, not the
+    rod above it). Returns (z0, z1, note) as shares of the product height."""
+    n = len(widths)
+    wide = min_share * max(widths, default=0.0)
+    if n == 0 or wide <= 0:
+        return z0, z1, None
+    inside = [w for k, w in enumerate(widths) if z0 <= (k + 0.5) / n <= z1] or [0.0]
+    if sorted(inside)[len(inside) // 2] >= wide:
+        return z0, z1, None
+    runs, start = [], None
+    for k, w in enumerate([*widths, 0.0]):
+        if w >= wide and start is None:
+            start = k
+        elif w < wide and start is not None:
+            runs.append((start / n, k / n))
+            start = None
+    if not runs:
+        return z0, z1, None
+    mid = (z0 + z1) / 2
+    r0, r1 = min(runs, key=lambda r: abs((r[0] + r[1]) / 2 - mid))
+    if r1 - r0 < min_height:
+        c = (r0 + r1) / 2
+        r0, r1 = max(0.0, c - min_height / 2), min(1.0, c + min_height / 2)
+    return r0, r1, f"close-up of a thin band ({z0:.2f}-{z1:.2f} of the height) framed on {r0:.2f}-{r1:.2f}"
 
 
 @dataclass(frozen=True)

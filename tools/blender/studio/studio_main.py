@@ -39,6 +39,8 @@ RELIGHT_NAMES = ("off.png", "on.png")
 RELIGHT_DIM = 0.35
 #: widest the product is framed (share of the frame width) when the composition does not overflow the frame
 MAX_WIDTH = 0.92
+#: close-ups stop down to at least this f-number (DOF a few cm at the 65 mm macro distance)
+CLOSEUP_FSTOP = 8.0
 
 
 def log(msg: str) -> None:
@@ -146,6 +148,8 @@ class ShotPlan:
     files: list[str]
     accent_used: bool
     sweep_used: bool
+    #: aperture of this shot (close-ups stop down); None = the job's
+    fstop: float | None = None
 
 
 def _subsample(points: np.ndarray, limit: int) -> list[framing.Vec]:
@@ -157,12 +161,15 @@ def has_own_light(model: product_import.ProductModel, job: dict) -> bool:
     return (job["product"]["emitsLight"] and model.bulb is not None) or bool(model.emissive)
 
 
-def _band_width(points, H: float, z0: float, z1: float) -> float:
-    """Horizontal extent (largest of the x / y spans) of the model points inside a height band."""
-    sel = points[(points[:, 2] >= z0 * H - 1e-9) & (points[:, 2] <= z1 * H + 1e-9)]
-    if len(sel) < 8:
-        return 0.0
-    return float(max(np.ptp(sel[:, 0]), np.ptp(sel[:, 1])))
+def _slice_widths(model: product_import.ProductModel, H: float, slices: int = 20) -> list[float]:
+    """Horizontal extent of the product in equal height slices, from points sampled on its SURFACE (vertices
+    alone leave a cube's faces and a rod's length empty)."""
+    pts = model.surface if model.surface is not None and len(model.surface) else model.points
+    out = []
+    for k in range(slices):
+        sel = pts[(pts[:, 2] >= k / slices * H - 1e-9) & (pts[:, 2] <= (k + 1) / slices * H + 1e-9)]
+        out.append(float(max(np.ptp(sel[:, 0]), np.ptp(sel[:, 1]))) if len(sel) >= 4 else 0.0)
+    return out
 
 
 def plan_shot(model: product_import.ProductModel, job: dict, spec: dict, cfg: dict, scale_override) -> ShotPlan:
@@ -184,13 +191,11 @@ def plan_shot(model: product_import.ProductModel, job: dict, spec: dict, cfg: di
     rest, notes = shotlib.plate_state(preset, params, spec["productAnimation"], **kw)
     angle = -float(params["angleDeg"])
     H = model.height
-    focus = comp.focus
+    z0, z1 = shotlib.focus_band(comp.focus)
     if comp.fill > 1.0:
-        widths = {f: _band_width(model.points, H, *shotlib.focus_band(f)) for f in ("base", "middle", "top", "detail")}
-        focus, why = shotlib.macro_focus(focus, widths, _band_width(model.points, H, 0.0, 1.0))
+        z0, z1, why = shotlib.refine_band(z0, z1, _slice_widths(model, H))
         if why:
             notes["macroFocus"] = why
-    z0, z1 = shotlib.focus_band(focus)
     band = model.points[(model.points[:, 2] >= z0 * H - 1e-9) & (model.points[:, 2] <= z1 * H + 1e-9)]
     if len(band) < 8:
         band = model.points
@@ -240,9 +245,18 @@ def plan_shot(model: product_import.ProductModel, job: dict, spec: dict, cfg: di
         basis = framing.look_at(cam, tgt)
         poses.append(FramePose(s, cam, basis, framing.dot(framing.sub(tgt, cam), basis.forward),
                                angle + s.prod_rot, s.prod_lift * H))
+    fstop = None
+    if comp.fill > 1.0:
+        # a close-up focuses on the near surface of the framed part (not its centre, which a round base hides
+        # behind its own front) and stops down: the detail is sharp, the background still soft
+        depths = [framing.dot(framing.sub(p, fit.camera), fit.basis.forward) for p in pts]
+        front = max(0.0, fit.focus_distance - min(depths))
+        for p in poses:
+            p.focus_distance = max(0.01, p.focus_distance - 0.8 * front)
+        fstop = max(float(job["camera"]["dof"]["fStop"]), CLOSEUP_FSTOP)
     w, h = (int(round(cw * overscan)), int(round(ch * overscan)))
     return ShotPlan(spec, preset, fallback, technique, notes, comp, w, h, overscan, fit, poses, files,
-                    any(p.state.accent > 0 for p in poses), any(p.state.sweep is not None for p in poses))
+                    any(p.state.accent > 0 for p in poses), any(p.state.sweep is not None for p in poses), fstop)
 
 
 #: the set is built for the whole product framed at this fill (two QA "-fill" reframes of a 0.56 CTA) …
@@ -283,6 +297,7 @@ class Studio:
         cam_data.clip_end = 400.0 * model.size
         cam_data.dof.use_dof = job["camera"]["dof"]["enabled"]
         cam_data.dof.aperture_fstop = job["camera"]["dof"]["fStop"]
+        self.base_fstop = float(job["camera"]["dof"]["fStop"])
         self.cam = bpy.data.objects.new("StudioCamera", cam_data)
         self.scene.collection.objects.link(self.cam)
         self.scene.camera = self.cam
@@ -313,6 +328,7 @@ class Studio:
                                         (b.right[1], b.up[1], -b.forward[1], c[1]),
                                         (b.right[2], b.up[2], -b.forward[2], c[2]), (0, 0, 0, 1)))
         self.cam.data.dof.focus_distance = max(0.01, pose.focus_distance)
+        self.cam.data.dof.aperture_fstop = plan.fstop or self.base_fstop
         piv = self.model.pivot
         piv.rotation_euler = (0.0, 0.0, math.radians(pose.prod_rot))
         piv.location = (0.0, 0.0, pose.lift)
