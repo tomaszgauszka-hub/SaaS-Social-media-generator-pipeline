@@ -19,7 +19,7 @@ import os
 import shutil
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import bpy
 import numpy as np
@@ -41,6 +41,8 @@ RELIGHT_DIM = 0.35
 MAX_WIDTH = 0.92
 #: close-ups stop down to at least this f-number (DOF a few cm at the 65 mm macro distance)
 CLOSEUP_FSTOP = 8.0
+#: a close-up frame covers at least this share of the product height
+MIN_CLOSEUP_VIEW = 0.22
 
 
 def log(msg: str) -> None:
@@ -194,6 +196,12 @@ def plan_shot(model: product_import.ProductModel, job: dict, spec: dict, cfg: di
     z0, z1 = shotlib.focus_band(comp.focus)
     if comp.fill > 1.0:
         z0, z1, why = shotlib.refine_band(z0, z1, _slice_widths(model, H))
+        # a close-up still shows a readable piece of the product (≥ MIN_CLOSEUP_VIEW of its height): a small
+        # part (a 4.5 cm marble cube) is framed whole with some context, not as one featureless face
+        fill = min(comp.fill, max(0.7, (z1 - z0) / MIN_CLOSEUP_VIEW))
+        if fill < comp.fill:
+            why = f"{why + '; ' if why else ''}small part: fill {comp.fill:.2f} → {fill:.2f}"
+            comp = replace(comp, fill=fill)
         if why:
             notes["macroFocus"] = why
     band = model.points[(model.points[:, 2] >= z0 * H - 1e-9) & (model.points[:, 2] <= z1 * H + 1e-9)]
