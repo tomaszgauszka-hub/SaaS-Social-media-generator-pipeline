@@ -18,7 +18,7 @@ import {
 } from "../contracts/plan.ts";
 import type { ProductProfile, ProductSource } from "../contracts/product.ts";
 import type { BrandProfile, PlatformProfile, TierProfile } from "../contracts/profiles.ts";
-import { CONCEPTS, DISCLOSURE, langOf, type Lang } from "./lexicon.ts";
+import { CONCEPTS, disclosureFor, langOf, type Lang } from "./lexicon.ts";
 
 /**
  * PlanCompiler: DirectorDecision (WHAT, from a model or the template) → ReelPlan (HOW, decided by code).
@@ -232,10 +232,7 @@ export function compilePlan(a: CompileInput): ReelPlan {
 
   slots.cta = { kind: "cta", text: d.cta.text, factIds: d.cta.factIds };
   slots.button = { kind: "button", text: d.cta.buttonText, factIds: [] };
-  const disclosure =
-    a.brand.disclosure[a.locale] ??
-    a.brand.disclosure[lang] ??
-    (Object.keys(a.brand.disclosure).length ? DISCLOSURE[lang] : undefined);
+  const disclosure = disclosureFor(a.brand, a.locale);
   if (disclosure) slots.disclosure = { kind: "disclosure", text: disclosure, factIds: [] };
 
   const ctaShot = shots[shots.length - 1]!;

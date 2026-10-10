@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { Capability, HookStrategy, LocaleTag, PlatformId, QualityTier } from "./ids.ts";
+import { Capability, HookStrategy, LocaleTag, PlatformId, QualityTier, SafeId } from "./ids.ts";
 
 /** One production order: a product → a sales reel (+ localized and A/B variants). */
 export const ReelJob = z.object({
-  jobId: z.string().min(1).max(120),
+  jobId: SafeId,
   productId: z.string().min(1),
   brandId: z.string().min(1),
   platform: PlatformId.default("tiktok"),

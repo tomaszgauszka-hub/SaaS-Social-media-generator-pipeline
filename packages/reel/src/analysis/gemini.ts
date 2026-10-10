@@ -3,7 +3,7 @@ import { z } from "zod";
 import { thinkingFor } from "../providers/google/common.ts";
 import type { CallContext, ProductAnalyzer } from "../capabilities/types.ts";
 import { ProductProfile, type ProductSource } from "../contracts/product.ts";
-import { catalogPalette, categoryOf, sourceHash } from "./deterministic.ts";
+import { catalogPalette, categoryOf, emitsLightOf, sourceHash } from "./deterministic.ts";
 
 /**
  * Multimodal product analysis with Gemini (cheap Flash-Lite, minimal thinking): catalog facts BY ID plus up to
@@ -112,9 +112,7 @@ export class GeminiProductAnalyzer implements ProductAnalyzer {
       risks: a.risks,
       palette: main ? (await catalogPalette(main.path).catch(() => [])).slice(0, 6) : [],
       traits: {
-        emitsLight:
-          category === "lighting" ||
-          ((category === "home" || category === "other") && hasText(/\b(bulb|lamp)\b/i)),
+        emitsLight: emitsLightOf(source),
         hasMovingParts: category === "tools" || hasText(/motor|rotat|spin/i),
         hasScreen: category === "electronics" && hasText(/\b(screen|display)\b/i),
         tall: false,

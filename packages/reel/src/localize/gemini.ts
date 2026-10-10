@@ -2,6 +2,7 @@ import type { GoogleAI } from "@cre/providers";
 import { z } from "zod";
 import type { CallContext, TranscreationProvider, TranscreationRequest } from "../capabilities/types.ts";
 import { LocaleCopy, type CopySlot } from "../contracts/plan.ts";
+import { disclosureFor } from "../director/lexicon.ts";
 import { recordCall, recordFailure, thinkingFor } from "../providers/google/common.ts";
 
 /**
@@ -67,13 +68,16 @@ export class GeminiTranscreation implements TranscreationProvider {
         cta: req.brand.preferredCTA,
       },
       facts: req.facts.map((f) => [f.id, f.kind, f.text.slice(0, 200)]),
-      slots: Object.entries(req.master.slots).map(([id, s]) => ({
-        id,
-        kind: s.kind,
-        text: s.text,
-        factIds: s.factIds,
-        maxChars: req.limits[id] ?? 80,
-      })),
+      // the ad / affiliate disclosure is legal text: never sent to (or rewritten by) the model
+      slots: Object.entries(req.master.slots)
+        .filter(([, s]) => s.kind !== "disclosure")
+        .map(([id, s]) => ({
+          id,
+          kind: s.kind,
+          text: s.text,
+          factIds: s.factIds,
+          maxChars: req.limits[id] ?? 80,
+        })),
     });
     let res;
     try {
@@ -107,6 +111,14 @@ export class GeminiTranscreation implements TranscreationProvider {
       if (!got) throw new Error(`transcreation: ${t.locale} missing in the answer`);
       const slots: Record<string, CopySlot> = {};
       for (const [id, master] of Object.entries(req.master.slots)) {
+        if (master.kind === "disclosure") {
+          slots[id] = {
+            kind: "disclosure",
+            text: disclosureFor(req.brand, t.locale) ?? master.text,
+            factIds: [],
+          };
+          continue;
+        }
         const s = got.slots.find((x) => x.id === id);
         if (!s) throw new Error(`transcreation: ${t.locale} slot ${id} missing`);
         const limit = req.limits[id] ?? 200;

@@ -10,6 +10,7 @@ import {
   CTA_VOICE,
   DESIRE,
   DISCLOSURE,
+  disclosureFor,
   detectConcepts,
   factIdsFor,
   langOf,
@@ -93,7 +94,7 @@ export function transcreateSlots(
       case "disclosure":
         slots[id] = {
           kind: "disclosure",
-          text: req.brand.disclosure[target.locale] ?? req.brand.disclosure[lang] ?? DISCLOSURE[lang],
+          text: disclosureFor(req.brand, target.locale) ?? DISCLOSURE[lang],
           factIds: [],
         };
         break;

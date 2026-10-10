@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FactId, HexColor, LocaleTag } from "./ids.ts";
+import { FactId, HexColor, LocaleTag, SafeId } from "./ids.ts";
 
 /**
  * ProductSource — the ground truth about a product, as ingested from a merchant feed, a catalog dataset, the DB
@@ -21,6 +21,8 @@ export const FactKind = z.enum([
   "certificate",
   "price",
   "promotion",
+  /** a real customer rating / review summary from the catalog (e.g. "4.6 out of 5 stars, 1,200 ratings") */
+  "rating",
   "usage",
   "assembly",
   "other",
@@ -74,7 +76,7 @@ export const ProductPrice = z.object({
 });
 
 export const ProductSource = z.object({
-  id: z.string().min(1).max(120),
+  id: SafeId,
   source: z.object({
     kind: z.enum(["abo", "json", "db", "feed", "url"]),
     ref: z.string().max(500),

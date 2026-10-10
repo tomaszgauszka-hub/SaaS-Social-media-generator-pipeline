@@ -355,9 +355,9 @@ export class ReelFactory {
             continue;
           }
           // the re-hooked master copy is new copy: it passes the same claim gate as a directed plan
-          const blockers = validateCopy(rehooked.copy, source, brand, profile).filter(
-            (i) => i.severity === "blocker",
-          );
+          const blockers = validateCopy(rehooked.copy, source, brand, profile, {
+            modelWritten: !armA.director.local,
+          }).filter((i) => i.severity === "blocker");
           if (blockers.length) {
             log.warn(
               { hookStrategy, blockers: blockers.map((b) => b.message) },
@@ -949,9 +949,10 @@ export class ReelFactory {
           fallbacks: jc.registry.chains,
           configVersion: FACTORY_VERSION,
         });
-        const blockers = validateCopy(plan.copy, jc.source, jc.brand, jc.profile).filter(
-          (i) => i.severity === "blocker",
-        );
+        // copy a model wrote gets no benefit of the doubt (an invented number or colour is a blocker)
+        const blockers = validateCopy(plan.copy, jc.source, jc.brand, jc.profile, {
+          modelWritten: !p.local,
+        }).filter((i) => i.severity === "blocker");
         if (blockers.length)
           throw new Error(`director copy rejected: ${blockers.map((i) => i.message).join("; ")}`);
         return plan;
@@ -1008,9 +1009,9 @@ export class ReelFactory {
   ): Promise<{ copy: LocaleCopy; provider: string }[]> {
     const targets = jc.job.locales.slice(1);
     const masterOut = { copy: plan.copy, provider: "master" };
-    const masterBlockers = validateCopy(plan.copy, jc.source, jc.brand, jc.profile).filter(
-      (i) => i.severity === "blocker",
-    );
+    const masterBlockers = validateCopy(plan.copy, jc.source, jc.brand, jc.profile, {
+      modelWritten: plan.metadata.director.provider !== "template",
+    }).filter((i) => i.severity === "blocker");
     if (masterBlockers.length)
       throw new Error(`master copy rejected: ${masterBlockers.map((i) => i.message).join("; ")}`);
     if (!targets.length) return [masterOut];
@@ -1050,9 +1051,9 @@ export class ReelFactory {
           return { ...base, slots: { ...slots, ...c.slots } };
         });
         for (const c of copies) {
-          const blockers = validateCopy(c, jc.source, jc.brand, jc.profile).filter(
-            (i) => i.severity === "blocker",
-          );
+          const blockers = validateCopy(c, jc.source, jc.brand, jc.profile, {
+            modelWritten: !p.local,
+          }).filter((i) => i.severity === "blocker");
           if (blockers.length)
             throw new Error(`${c.locale} copy rejected: ${blockers.map((i) => i.message).join("; ")}`);
         }

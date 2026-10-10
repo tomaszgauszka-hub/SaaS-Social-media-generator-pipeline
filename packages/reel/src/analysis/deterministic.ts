@@ -21,19 +21,89 @@ export function sourceHash(source: ProductSource): string {
   return sha256Hex(stableStringify(source)).slice(0, 24);
 }
 
+// whole words only: "Light Grey", "Lightweight", "panel", "spot" or "that" must never decide a category
 const CATEGORY_RULES: [CategoryKey, RegExp][] = [
-  ["lighting", /(lamp|light|lighting|leuchte|lampe|lámpara|lampada|luminaire|chandelier|sconce)/i],
-  ["tools", /(drill|driver|saw|sander|grinder|tool|wrench|wkrętar|bohr|werkzeug|taladro)/i],
-  ["beauty", /(cream|serum|sunscreen|lotion|cosmetic|beauty|skin|hair|makeup|lipstick)/i],
-  ["kitchen", /(kitchen|cook|pan|pot|knife|blender|kettle|mug|cup|plate|küche|cocina)/i],
-  ["electronics", /(phone|speaker|headphone|charger|camera|tablet|laptop|monitor|watch|electronic)/i],
-  ["fashion", /(shirt|dress|shoe|boot|bag|jacket|jeans|hat|apparel|clothing)/i],
-  ["home", /(chair|table|sofa|shelf|rug|pillow|vase|mirror|furniture|decor|home|bed|cabinet|stool)/i],
+  [
+    "lighting",
+    /\b(lamps?|lighting|lights?|light fixtures?|leuchten?|lampen?|lámparas?|lampade?|lampa|lampka|luminaires?|chandeliers?|sconces?)\b/i,
+  ],
+  [
+    "tools",
+    /\b(drills?|(screw)?drivers?|saws?|sanders?|grinders?|tools?|wrench(es)?|wkrętar\w*|bohr\w*|werkzeug\w*|taladros?)\b/i,
+  ],
+  [
+    "beauty",
+    /\b(creams?|serums?|sunscreens?|lotions?|cosmetics?|beauty|skin\s?care|hair\s?care|makeup|lipsticks?)\b/i,
+  ],
+  [
+    "kitchen",
+    /\b(kitchen|cookware|cooking|pans?|pots?|knife|knives|blenders?|kettles?|mugs?|cups?|plates?|küche|cocina)\b/i,
+  ],
+  [
+    "electronics",
+    /\b(phones?|smartphones?|speakers?|headphones?|chargers?|cameras?|tablets?|laptops?|monitors?|watch(es)?|electronics?)\b/i,
+  ],
+  [
+    "fashion",
+    /\b(t-?shirts?|shirts?|dress(es)?|shoes?|boots?|bags?|jackets?|jeans|hats?|apparel|clothing)\b/i,
+  ],
+  [
+    "home",
+    /\b(chairs?|tables?|sofas?|couch(es)?|shel(f|ves)|rugs?|pillows?|vases?|mirrors?|furniture|decor|home|beds?|cabinets?|stools?)\b/i,
+  ],
 ];
 
-export function categoryOf(source: ProductSource): CategoryKey {
-  const hay = [source.category, source.categoryPath ?? "", ...Object.values(source.names)].join(" ");
-  return CATEGORY_RULES.find(([, re]) => re.test(hay))?.[0] ?? "other";
+/** colour and weight words that contain "light" but say nothing about a light source */
+const LIGHT_ADJECTIVE =
+  /\blight[\s-]*(?:weight|grey|gray|blue|brown|green|pink|beige|wood|oak|walnut|natural|tan|taupe|cream|white|yellow|purple|teal|turquoise|khaki|olive|red|orange|silver|gold)\b/gi;
+
+export interface CategoryDecision {
+  category: CategoryKey;
+  /** which field decided: the leaf category, the category path (leaf first), a product name, nothing */
+  from: "category" | "path" | "name" | "none";
+}
+
+/**
+ * Category from the structured fields first — the leaf category, then the path from the leaf upwards (so
+ * "Home & Kitchen/…/Sofas" is home, not kitchen) — and only then from the names, with colour / weight phrases
+ * ("Light Grey", "Lightweight") removed.
+ */
+export function classifyCategory(
+  source: Pick<ProductSource, "category" | "categoryPath" | "names">,
+): CategoryDecision {
+  const ruleFor = (text: string) => CATEGORY_RULES.find(([, re]) => re.test(text))?.[0];
+  const leaf = ruleFor(source.category.replace(LIGHT_ADJECTIVE, " "));
+  if (leaf) return { category: leaf, from: "category" };
+  const segments = (source.categoryPath ?? "").split("/").filter(Boolean).reverse();
+  for (const seg of segments) {
+    const c = ruleFor(seg.replace(LIGHT_ADJECTIVE, " "));
+    if (c) return { category: c, from: "path" };
+  }
+  const name = ruleFor(Object.values(source.names).join(" ").replace(LIGHT_ADJECTIVE, " "));
+  return name ? { category: name, from: "name" } : { category: "other", from: "none" };
+}
+
+export function categoryOf(source: Pick<ProductSource, "category" | "categoryPath" | "names">): CategoryKey {
+  return classifyCategory(source).category;
+}
+
+/**
+ * The product itself is a light source (the studio puts a light inside it and the hooks may say it lights up):
+ * a lighting category from the catalog structure, or one only named so but whose facts name a light source; a
+ * home / other product only when its facts name a bulb. Accessory LEDs (a drill's work light) never count.
+ */
+export function emitsLightOf(
+  source: Pick<ProductSource, "category" | "categoryPath" | "names" | "facts">,
+): boolean {
+  const { category, from } = classifyCategory(source);
+  const facts = source.facts;
+  if (category === "lighting")
+    return (
+      from === "category" ||
+      from === "path" ||
+      has(facts, /\b(bulbs?|led|lumens?|watts?|lamps?|leuchtmittel|glühbirne|bombillas?|żarów\w*)\b/i)
+    );
+  return (category === "home" || category === "other") && has(facts, /\b(bulbs?|leuchtmittel|bombillas?)\b/i);
 }
 
 /** Features a reel must not claim unless the facts say so (per category). */
@@ -159,10 +229,7 @@ export class DeterministicProductAnalyzer implements ProductAnalyzer {
     const heightCm = facts.find((f) => f.id === "dim.height.cm")?.value;
     const widthCm = facts.find((f) => f.id === "dim.width.cm")?.value;
     // a light source is the product itself (lamps), not an accessory LED (a drill's work light, a charger LED)
-    const emitsLight =
-      category === "lighting" ||
-      ((category === "home" || category === "other") &&
-        has(facts, /\b(bulb|leuchtmittel|bombilla|lampe|lamp)\b/i));
+    const emitsLight = emitsLightOf(source);
     const visual: string[] = [];
     if (has(facts, /walnut|walnuss|nogal/i)) visual.push("walnut wood base");
     if (has(facts, /brass|messing|latón/i))

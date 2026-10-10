@@ -1,11 +1,13 @@
 import type { LocaleCopy } from "../contracts/plan.ts";
 import type { ProductFact, ProductProfile, ProductSource } from "../contracts/product.ts";
 import type { BrandProfile } from "../contracts/profiles.ts";
+import { disclosureFor } from "../director/lexicon.ts";
 
 /**
  * Claim validation: every word a viewer reads or hears must be supported by the product's own facts.
  * Blockers make the director / transcreation chain fall back to the next provider (ultimately the template,
- * whose claims come from fact-matched concepts only).
+ * whose claims come from fact-matched concepts only). Copy written by a model (`modelWritten`) gets no benefit
+ * of the doubt: a number or a colour the facts do not contain is a blocker there, not a warning.
  */
 
 export interface ClaimIssue {
@@ -89,7 +91,16 @@ const CURRENCY = /(\d[\d.,]*\s?(zł|pln|€|eur|usd|\$|£|gbp|chf)|(\$|€|£)\s
 const WARRANTY = /(gwarancj|warranty|garantie|garantía|garanzia|rękojm)/i;
 const CERTIFICATE = /(certyfik|certifi|zertifi|\bCE\b|\bTÜV\b|\bISO ?\d|atest|homologa)/i;
 const REVIEWS =
-  /(\d(?:[.,]\d)? ?(\/ ?5|gwiazd|stars|sterne|estrellas|étoiles|stelle)|recenzj|opinie klient|reviews?\b|bewertung|reseñ|avis client|recension)/i;
+  /(\d(?:[.,]\d)? ?(\/ ?5|gwiazd|stars|sterne|estrellas|étoiles|stelle)|recenzj|opinie klient|reviews?\b|bewertung|reseñ|avis client|recension|\brated\b|ocen[aiy]\b)/i;
+/** a fact that really is a rating: kind "rating" or a numeric star / out-of-5 pattern (not the bare word "review") */
+const RATING_FACT = /\d(?:[.,]\d)?\s?(\/\s?5|out of 5|stars?\b|sterne|gwiazd\w*|estrellas|étoiles|stelle)/i;
+/** fabricated social proof and first-person experiences (no source fact can make them true for a reel) */
+const SOCIAL_PROOF =
+  /(customers? (love|rave|adore)|happy customers|loved by|thousands of (customers|buyers|people)|best-?sellers?|top seller|sold out|\bI('ve| have)? (used|tried|love|bought|own)\b|\bmy (new )?favou?rite\b|klienci (kochają|pokochali|uwielbiają)|zadowolon\w* klient|tysiące (klientów|osób)|hit sprzedaży|bestsel|używam (go|jej|tego) od|kocham (tę|ten|to)|kunden (lieben|sind begeistert)|zufriedene kunden|tausende (kunden|käufer)|verkaufsschlager|ich (liebe|nutze|benutze) (sie|ihn|es|diese)|clientes (encantados|felices|aman)|miles de (clientes|personas)|más vendid|me encanta|lo uso desde|clients (adorent|satisfaits|ravis)|des milliers de|meilleure vente|j'adore|je l'utilise|clienti (soddisfatti|amano|entusiasti)|migliaia di|più vendut|lo adoro|la adoro)/i;
+const FREE_SHIPPING =
+  /(free (shipping|delivery)|ships free|darmow\w* (dostaw|wysył)|bezpłatn\w* (dostaw|wysył)|kostenlose\w* (versand|lieferung)|versandkostenfrei|envío (gratis|gratuito)|livraison (gratuite|offerte)|spedizione gratuita|consegna gratuita)/i;
+const URGENCY =
+  /(today only|only today|limited (time|stock|offer|edition)|last (pieces|chance|items)|while stocks? lasts?|hurry|ends (soon|tonight)|tylko dziś|tylko dzisiaj|ostatnie sztuki|ograniczon\w* (ilość|ofert|czas)|pośpiesz|nur heute|solange der vorrat reicht|letzte (chance|stücke)|nur noch wenige|solo hoy|últimas unidades|por tiempo limitado|aujourd'hui seulement|dernières pièces|quantité limitée|stock limité|solo oggi|ultimi pezzi|tempo limitato)/i;
 
 const ABSOLUTE: Record<string, { blocker: RegExp; minor: RegExp }> = {
   pl: {
@@ -160,10 +171,16 @@ const LIMITS: Record<string, number> = {
 export function validateCopy(
   copy: LocaleCopy,
   source: ProductSource,
-  brand: Pick<BrandProfile, "forbiddenPhrases">,
+  brand: Pick<BrandProfile, "forbiddenPhrases"> & Partial<Pick<BrandProfile, "disclosure">>,
   profile?: Pick<ProductProfile, "risks">,
+  opts: { modelWritten?: boolean } = {},
 ): ClaimIssue[] {
   const issues: ClaimIssue[] = [];
+  const strict = Boolean(opts.modelWritten);
+  const ratingFact = source.facts.some((f) => f.kind === "rating" || RATING_FACT.test(f.text));
+  const disclosure = brand.disclosure
+    ? disclosureFor({ disclosure: brand.disclosure }, copy.locale)
+    : undefined;
   const facts = new Map(source.facts.map((f) => [f.id, f]));
   const allText = source.facts.map((f) => f.text).join("\n");
   const lang = copy.locale.slice(0, 2);
@@ -178,19 +195,24 @@ export function validateCopy(
     const add = (severity: ClaimIssue["severity"], code: string, message: string) =>
       issues.push({ slot, severity, code, message: `${slot}: ${message}` });
     const text = s.text;
+    if (s.kind === "disclosure") {
+      // legal text: exactly what the brand configured for this locale (no model may reword it)
+      if (disclosure && text.trim() !== disclosure)
+        add("blocker", "disclosure_altered", `disclosure must read "${disclosure}", got "${text}"`);
+      continue;
+    }
     const unknown = s.factIds.filter((id) => !facts.has(id) && id !== source.price?.factId);
     if (unknown.length) add("blocker", "unknown_fact", `cites unknown facts ${unknown.join(", ")}`);
 
     // numbers must trace to facts (cited facts first)
     for (const q of quantities(text)) {
-      if (s.kind === "disclosure") break;
       const cited = s.factIds.flatMap((id) => (facts.get(id) ? factQuantities(facts.get(id)!) : []));
       if (cited.some((c) => sameQuantity(q, c))) continue;
       const anywhere = source.facts.flatMap(factQuantities).some((c) => sameQuantity(q, c));
       if (anywhere) add("major", "uncited_number", `"${q.value}${q.unit}" matches a fact that is not cited`);
       else
         add(
-          q.unit ? "blocker" : "major",
+          q.unit || strict ? "blocker" : "major",
           "invented_number",
           `"${q.value}${q.unit ? ` ${q.unit}` : ""}" is not in the product facts`,
         );
@@ -201,8 +223,18 @@ export function validateCopy(
       add("blocker", "unsupported_warranty", "warranty claim without a warranty fact");
     if (CERTIFICATE.test(text) && !hasKind(s.factIds, ["certificate"]))
       add("blocker", "unsupported_certificate", "certificate claim without a certificate fact");
-    if (REVIEWS.test(text) && !REVIEWS.test(allText))
-      add("blocker", "unsupported_reviews", "rating / review claim without review facts");
+    if (REVIEWS.test(text) && !ratingFact)
+      add("blocker", "unsupported_reviews", "rating / review claim without a rating fact");
+    if (SOCIAL_PROOF.test(text))
+      add("blocker", "social_proof", `testimonial / social-proof wording is never supported: "${text}"`);
+    if (FREE_SHIPPING.test(text) && !hasKind(s.factIds, ["promotion"]))
+      add(
+        "blocker",
+        "unsupported_shipping",
+        `free shipping / delivery offer without a promotion fact: "${text}"`,
+      );
+    if (URGENCY.test(text) && !hasKind(s.factIds, ["promotion"]))
+      add("blocker", "unsupported_urgency", `urgency / scarcity wording without a promotion fact: "${text}"`);
     for (const p of brand.forbiddenPhrases)
       if (p && text.toLowerCase().includes(p.toLowerCase()))
         add("blocker", "forbidden_phrase", `forbidden phrase "${p}"`);
@@ -216,7 +248,7 @@ export function validateCopy(
     }
     for (const [colour, re] of Object.entries(COLOURS))
       if (re.test(text) && !re.test(allText))
-        add("major", "color_mismatch", `mentions ${colour}, the product facts do not`);
+        add(strict ? "blocker" : "major", "color_mismatch", `mentions ${colour}, the product facts do not`);
     const limit = LIMITS[s.kind];
     if (limit && text.length > limit) add("minor", "too_long", `${text.length} > ${limit} characters`);
   }

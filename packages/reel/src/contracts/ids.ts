@@ -7,6 +7,15 @@ import { z } from "zod";
  */
 
 /** Procedural Blender shots (keyframes are computed in Python from these ids + bounded params). */
+/**
+ * An id that becomes part of a file or directory name (job ids, product ids): letters, digits, "_", "." and "-",
+ * starting alphanumeric, never "..". Payload ids can therefore never leave the output / cache roots.
+ */
+export const SafeId = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$/, "letters, digits, _ . - only (max 120)")
+  .refine((s) => !s.includes(".."), "must not contain ..");
+
 export const SHOT_PRESETS = [
   "hero_reveal",
   "turntable",

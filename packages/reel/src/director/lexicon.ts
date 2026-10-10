@@ -668,6 +668,22 @@ export const DISCLOSURE: Lines = {
   it: "Pubblicità · link affiliato",
 };
 
+/**
+ * The ad / affiliate disclosure a reel shows for a locale: the brand's configured text (locale, then language),
+ * else the native default — none for a brand without disclosures. Always written by code, never by a model.
+ */
+export function disclosureFor(
+  brand: { disclosure: Record<string, string> },
+  locale: string,
+): string | undefined {
+  const lang = langOf(locale) ?? "en";
+  return (
+    brand.disclosure[locale] ??
+    brand.disclosure[locale.slice(0, 2).toLowerCase()] ??
+    (Object.keys(brand.disclosure).length ? DISCLOSURE[lang] : undefined)
+  );
+}
+
 /** Number formatting per language (decimal comma in pl/de/fr/es/it). */
 export function formatNumber(n: number, lang: Lang): string {
   const s = Number.isInteger(n) ? String(n) : n.toFixed(1);

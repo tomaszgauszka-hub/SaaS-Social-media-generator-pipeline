@@ -252,8 +252,13 @@ export async function ingestAboProduct(dir: string): Promise<ProductSource> {
 /** A ProductSource stored as JSON (DB export, merchant feed adapter, hand-written test product). */
 export function loadProductSourceJson(file: string): ProductSource {
   const raw = JSON.parse(fs.readFileSync(file, "utf8")) as ProductSource;
-  const base = path.dirname(file);
-  const abs = (p: string) => (path.isAbsolute(p) ? p : path.join(base, p));
+  const base = path.resolve(path.dirname(file));
+  // media of a product live in its own directory: a path that leaves it is refused (never read, never uploaded)
+  const abs = (p: string) => {
+    const r = path.resolve(base, p);
+    if (!r.startsWith(`${base}${path.sep}`)) throw new Error(`product media path leaves ${base}: ${p}`);
+    return r;
+  };
   return ProductSource.parse({
     ...raw,
     images: (raw.images ?? []).map((i) => ({ ...i, path: abs(i.path) })),

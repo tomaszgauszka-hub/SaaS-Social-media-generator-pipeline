@@ -27,6 +27,21 @@ export interface HookContext {
   price?: { amount: number; currency: string; factId: string };
 }
 
+/**
+ * A real customer rating: a "rating" fact, or a star / out-of-5 fact, with a value in (0, 5]. An energy rating, a
+ * wattage or the word "review" in assembly instructions never is one.
+ */
+export function ratingFact(facts: readonly ProductFact[]): ProductFact | undefined {
+  return facts.find(
+    (f) =>
+      f.value !== undefined &&
+      f.value > 0 &&
+      f.value <= 5 &&
+      (f.kind === "rating" ||
+        /\d(?:[.,]\d)?\s?(\/\s?5|out of 5|stars?\b|sterne|gwiazd\w*|estrellas|étoiles|stelle)/i.test(f.text)),
+  );
+}
+
 export function hookApplicable(s: HookStrategy, c: HookContext): { ok: boolean; reason?: string } {
   const need = HOOKS[s].requires;
   switch (need) {
@@ -35,11 +50,7 @@ export function hookApplicable(s: HookStrategy, c: HookContext): { ok: boolean; 
     case "price":
       return c.price ? { ok: true } : { ok: false, reason: "no price fact" };
     case "rating":
-      return c.facts.some((f) =>
-        /(rating|stars|sterne|estrellas|étoiles|stelle|reviews|bewertung)/i.test(f.text),
-      )
-        ? { ok: true }
-        : { ok: false, reason: "no rating / review facts" };
+      return ratingFact(c.facts) ? { ok: true } : { ok: false, reason: "no customer rating fact" };
     case "performance":
       return c.facts.some((f) => f.kind === "performance" || f.kind === "power")
         ? { ok: true }
@@ -136,7 +147,7 @@ export function hookLine(
     factIds.push(c.price.factId);
   }
   if (text.includes("{rating}")) {
-    const f = c.facts.find((x) => /(rating|stars|sterne)/i.test(x.text) && x.value !== undefined);
+    const f = ratingFact(c.facts);
     if (!f) return hookLine("question", locale, c);
     text = text.replace("{rating}", formatNumber(f.value!, lang));
     factIds.push(f.id);
