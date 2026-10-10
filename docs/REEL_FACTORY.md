@@ -88,8 +88,9 @@ costs one audio pass and one video pass instead of a Blender render.
   concrete problems, then the next provider.
 - **Native copy lexicon** (`director/lexicon.ts`) — whole sentences per language (pl, en, de, fr, es, it) written
   as a copywriter would, never assembled word by word. Product claims exist only as _concepts_ that are used when
-  the product's own facts contain them (walnut + brass + fabric, curved brass stem, LED bulb included, easy
-  assembly, mid-century style, room fit …); every line carries the ids of the facts that prove it, preferring
+  the product's own facts contain them (walnut + brass + fabric, curved brass stem, ceramic + nickel + linen,
+  geometric cut-outs, solid marble cube + brass, resin + metal + linen, a wood-grain _look_ — never "wood" for a
+  resin, LED bulb included, easy assembly, mid-century style, room fit …); every line carries the ids of the facts that prove it, preferring
   the facts written in the copy's language. Slot ids carry the concept id (`voice.2.materials_walnut_brass_fabric`),
   so **template transcreation** re-writes the same claim natively in another language instead of translating it.
   Example (lamp, PL / EN / DE): „Orzechowa podstawa, mosiężny trzon i abażur z tkaniny." / "A walnut base, a brass
@@ -180,6 +181,12 @@ installed into the cache, so a retry resumes; the host-wide Blender lock records
 boot id + process start time with a heartbeat, and reclaims stale or PID-reused locks atomically. In the worker,
 a QUALITY plan whose estimated Blender time exceeds 60 % of the job timeout is rendered with FAST (recorded as a
 fallback); QUALITY sequences render at 15 fps and are interpolated.
+
+Framing for sales text: the HOOK and CTA shots are framed lower (`params.centerY`, product top ≈ 557 / 614 px) so
+the headline and the CTA stack never cover the product on any platform. Close-ups measure the product's width
+profile from area-weighted surface samples: a band that is mostly thin (a lamp rod) moves to the nearest wide run
+(the marble cube, the shade), the focus sits on the near surface and the aperture stops down to f/8 — a detail,
+never an abstract blur.
 
 ## ReelComposer (FFmpeg)
 
