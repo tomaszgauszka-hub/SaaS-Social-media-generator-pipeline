@@ -104,6 +104,8 @@ const ANGLES = [-25, 22, -35, 30, -18, 26];
 const HOOK_FRAMING = { fill: 0.55, centerY: 0.565 } as const;
 /** CTA framing: the headline + button stack ends near 560 px on Instagram; the product starts at ~614 px */
 const CTA_FRAMING = { fill: 0.54, centerY: 0.59 } as const;
+/** A one-line overlay ends near 400 px on Instagram (band 294 + panel ~100): the product starts at ~518 px */
+const OVERLAY_FRAMING = { fill: 0.58, centerY: 0.56 } as const;
 
 /** Boundaries (ms) snapped to beats, then frames; every shot keeps ≥ minMs. */
 export function snapBoundaries(
@@ -197,6 +199,15 @@ export function compilePlan(a: CompileInput): ReelPlan {
       slots[overlaySlot] = { kind: "overlay", text: s.overlay.text, factIds: s.overlay.factIds };
     }
     const transitionType: Transition = i === 0 ? "cut" : s.transition;
+    const textFraming = macro
+      ? undefined
+      : s.role === "CTA"
+        ? CTA_FRAMING
+        : s.role === "HOOK"
+          ? HOOK_FRAMING
+          : overlaySlot
+            ? OVERLAY_FRAMING
+            : undefined;
     return {
       id,
       role: s.role,
@@ -211,19 +222,12 @@ export function compilePlan(a: CompileInput): ReelPlan {
         angleDeg: ANGLES[i % ANGLES.length]!,
         height: s.preset === "low_angle" ? 0.25 : s.preset === "top_down" ? 1.4 : 0.55,
         focus: s.focus,
-        fill: macro
-          ? 1.5
-          : s.role === "CTA"
-            ? CTA_FRAMING.fill
-            : s.role === "HOOK"
-              ? HOOK_FRAMING.fill
-              : 0.62,
+        fill: macro ? 1.5 : (textFraming?.fill ?? 0.62),
         sweepDeg:
           s.preset === "turntable" ? 90 : s.preset === "slow_turntable" ? 40 : s.preset === "orbit" ? 60 : 30,
-        // the hook headline and the CTA stack sit in the top text band: the product starts below them on every
-        // platform (the panels never cover the product while it is revealed or offered)
-        ...(s.role === "HOOK" && !macro ? { centerY: HOOK_FRAMING.centerY } : {}),
-        ...(s.role === "CTA" && !macro ? { centerY: CTA_FRAMING.centerY } : {}),
+        // the hook headline, an overlay and the CTA stack sit in the top text band: the product starts below them
+        // on every platform (a panel never covers the product while it is revealed, proven or offered)
+        ...(textFraming ? { centerY: textFraming.centerY } : {}),
       },
       productAnimation,
       transitionIn: { type: transitionType, ms: TRANSITION_MS[transitionType] },

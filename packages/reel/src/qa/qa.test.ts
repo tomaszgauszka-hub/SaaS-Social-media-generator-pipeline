@@ -380,6 +380,37 @@ describe("voice rules", () => {
     expect(voiceRules(voice(4000), p).issues).toEqual([]);
   });
 
+  it("words cut at the end get a fix that drops the desire line, never the hook or the CTA", () => {
+    const withDesire = {
+      ...p,
+      voiceover: {
+        ...p.voiceover,
+        segments: [
+          { slot: "voice.1.hook", atMs: 200 },
+          { slot: "voice.2.desire", atMs: 2000 },
+          { slot: "voice.3.cta", atMs: 3800 },
+        ],
+      },
+    };
+    const issue = voiceRules(voice(5200), withDesire).issues.find((i) => i.code === "voice_overrun");
+    expect(issue?.fix).toBe("drop_voice:voice.2.desire");
+    const report = {
+      score: 60,
+      passed: false,
+      rerenderRequired: true,
+      checks: [],
+      issues: [issue!],
+      frames: [],
+      retries: [],
+    };
+    const { fixes, patched } = planRetry(report, withDesire);
+    expect(fixes).toEqual(["drop_voice:voice.2.desire"]);
+    expect(patched.voiceover.segments.map((s) => s.slot)).toEqual(["voice.1.hook", "voice.3.cta"]);
+    // the hook and the CTA are never dropped
+    const hookOnly = { ...report, issues: [{ ...issue!, fix: "drop_voice:voice.1.hook" }] };
+    expect(planRetry(hookOnly, withDesire).fixes).toEqual([]);
+  });
+
   it("surfaces the voice builder's blocker / major issues once (no double overrun)", () => {
     const r = voiceRules(
       voice(5200, [

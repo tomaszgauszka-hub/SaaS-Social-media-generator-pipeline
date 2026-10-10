@@ -142,7 +142,13 @@ describe.skipIf(!hasLamp)("director on the real lamp (ABO B075X2FZSM)", () => {
     expect(((hook.centerY ?? 0.5) - hook.fill / 2) * plan.resolution.height).toBeGreaterThan(536);
     const cta = plan.shots[plan.shots.length - 1]!.params;
     expect(((cta.centerY ?? 0.5) - cta.fill / 2) * plan.resolution.height).toBeGreaterThan(600);
-    expect(plan.shots.slice(1, -1).every((s) => s.params.centerY === undefined)).toBe(true);
+    // a non-close-up shot with an overlay is framed below the overlay band; plain shots keep the default
+    for (const s of plan.shots.slice(1, -1)) {
+      const closeUp = s.params.fill > 1;
+      if (s.overlaySlot && !closeUp)
+        expect(((s.params.centerY ?? 0.5) - s.params.fill / 2) * plan.resolution.height).toBeGreaterThan(500);
+      else expect(s.params.centerY).toBeUndefined();
+    }
     // the switch click lands on the first frame of the relight crossfade (round(0.3·N) of the shot's N frames),
     // not on the shot midpoint
     const hookFrames = Math.round((plan.shots[0]!.durationMs * plan.fps) / 1000);

@@ -10,6 +10,8 @@ import type { ReelPlan } from "../contracts/plan.ts";
  *   reposition_captions            caption band 120 px up (bounded)
  *   extend_cta:<ms>                CTA window longer by taking the time from the previous shot (≥ 900 ms kept)
  *   renormalize                    1 dB more true-peak headroom
+ *   drop_voice:<slot>              the voice-over would be cut at the end: drop its least important line (the
+ *                                  desire / value line — never the hook or the CTA) and re-voice
  */
 
 const MIN_SHOT_MS = 900;
@@ -57,6 +59,13 @@ export function planRetry(report: QaReport, plan: ReelPlan): { fixes: string[]; 
           startMs: s.startMs,
           endMs: s.startMs + s.durationMs,
         }));
+        applied.push(code);
+        break;
+      }
+      case "drop_voice": {
+        const segs = p.voiceover.segments;
+        if (!a || segs.length <= 2 || !segs.some((s) => s.slot === a) || /\.(hook|cta)$/.test(a)) break;
+        p.voiceover.segments = segs.filter((s) => s.slot !== a);
         applied.push(code);
         break;
       }

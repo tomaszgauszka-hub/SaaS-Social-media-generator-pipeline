@@ -538,12 +538,15 @@ export function voiceRules(voice: VoiceWithIssues | undefined, plan: ReelPlan): 
   }
   // the builder's own findings that change what the viewer hears (cut words, a second speaker, a lost line)
   const built = (voice.issues ?? []).filter((i) => i.severity !== "minor");
+  // words cut at the end: the deterministic fix drops the least important spoken line (desire / value)
+  const droppable = plan.voiceover.segments.find((s) => /\.(desire|value)$/.test(s.slot))?.slot;
   for (const i of built)
     out.issues.push({
       code: i.code.toLowerCase().slice(0, 60),
       severity: i.severity,
       message: i.message.slice(0, 400),
       ...(i.atMs !== undefined ? { atMs: Math.round(i.atMs) } : {}),
+      ...(i.code === "VOICE_OVERFLOW" && droppable ? { fix: `drop_voice:${droppable}` } : {}),
     });
   const last = voice.words[voice.words.length - 1];
   const fits = !last || last.endMs <= plan.durationMs - 150;
@@ -562,6 +565,7 @@ export function voiceRules(voice: VoiceWithIssues | undefined, plan: ReelPlan): 
       // words past the end are cut off the delivered file; inside the end margin they are only rushed
       severity: last.endMs > plan.durationMs ? "blocker" : "major",
       message: `speech ends at ${last?.endMs} ms, too close to the end`,
+      ...(last.endMs > plan.durationMs && droppable ? { fix: `drop_voice:${droppable}` } : {}),
     });
   if (!monotonic)
     out.issues.push({ code: "voice_timings", severity: "minor", message: "word timings not monotonic" });

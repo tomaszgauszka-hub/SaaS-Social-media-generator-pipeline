@@ -772,10 +772,12 @@ export class ReelFactory {
       const audioChanged =
         stableStringify([
           retry.patched.render_profile.audio,
+          retry.patched.voiceover,
           retry.patched.shots.map((s) => [s.startMs, s.durationMs]),
         ]) !==
         stableStringify([
           localized.render_profile.audio,
+          localized.voiceover,
           localized.shots.map((s) => [s.startMs, s.durationMs]),
         ]);
       localized = retry.patched;
