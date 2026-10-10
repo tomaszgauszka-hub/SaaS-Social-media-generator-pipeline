@@ -142,6 +142,9 @@ export const ShotParams = z.object({
   fill: z.number().min(0.25).max(2.5).default(0.62),
   /** orbit / turntable sweep (deg) */
   sweepDeg: z.number().min(0).max(360).default(40),
+  /** vertical centre of the product in the composed frame (0 top … 1 bottom); default per preset — set lower
+   *  where a text panel needs the room above the product */
+  centerY: z.number().min(0.35).max(0.7).optional(),
 });
 export type ShotParams = z.infer<typeof ShotParams>;
 

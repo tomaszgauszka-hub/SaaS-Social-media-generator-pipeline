@@ -137,6 +137,10 @@ describe.skipIf(!hasLamp)("director on the real lamp (ABO B075X2FZSM)", () => {
     }
     expect(t).toBe(12_000);
     expect(plan.shots[0]).toMatchObject({ role: "HOOK", technique: "relight", productAnimation: "light_on" });
+    // the hook headline needs the room above the product: the product's top sits below the tallest hook band
+    const hook = plan.shots[0]!.params;
+    expect(((hook.centerY ?? 0.5) - hook.fill / 2) * plan.resolution.height).toBeGreaterThan(536);
+    expect(plan.shots.slice(1).every((s) => s.params.centerY === undefined)).toBe(true);
     // the switch click lands on the first frame of the relight crossfade (round(0.3·N) of the shot's N frames),
     // not on the shot midpoint
     const hookFrames = Math.round((plan.shots[0]!.durationMs * plan.fps) / 1000);

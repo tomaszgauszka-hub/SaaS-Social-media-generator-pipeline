@@ -107,9 +107,9 @@ def _bool(v, path: str) -> bool:
 
 
 def validate_params(v, path: str) -> dict:
-    keys = {"intensity", "angleDeg", "height", "focus", "fill", "sweepDeg"}
+    keys = {"intensity", "angleDeg", "height", "focus", "fill", "sweepDeg", "centerY"}
     _obj(v, path, set(), keys)
-    return {
+    out = {
         "intensity": _num(v.get("intensity", 0.5), f"{path}.intensity", 0, 1),
         "angleDeg": _num(v.get("angleDeg", -25), f"{path}.angleDeg", -180, 180),
         "height": _num(v.get("height", 0.55), f"{path}.height", -0.2, 1.6),
@@ -117,6 +117,9 @@ def validate_params(v, path: str) -> dict:
         "fill": _num(v.get("fill", 0.62), f"{path}.fill", 0.25, 2.5),
         "sweepDeg": _num(v.get("sweepDeg", 40), f"{path}.sweepDeg", 0, 360),
     }
+    if v.get("centerY") is not None:
+        out["centerY"] = _num(v["centerY"], f"{path}.centerY", 0.35, 0.7)
+    return out
 
 
 def validate_shot(v, path: str) -> dict:

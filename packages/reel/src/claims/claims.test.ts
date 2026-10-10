@@ -147,7 +147,7 @@ describe("Gemini transcreation never touches the disclosure", () => {
         brand: {
           brandName: "b",
           forbiddenPhrases: [],
-          preferredCTA: "x",
+          preferredCTA: {},
           disclosure: { "de-DE": "Werbung · Affiliate-Link" },
         },
         limits: { "voice.1.x": 80 },

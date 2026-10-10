@@ -178,11 +178,13 @@ def composition(preset: str, params: dict) -> Composition:
     focus = p["focus"]
     if spec.detail_when_whole and focus == "whole":
         focus = "detail"
+    # a plan may move the product down to make room for a text panel above it (params.centerY)
+    center_y = float(p["centerY"]) if p.get("centerY") is not None else spec.center_y
     if spec.elevation is not None:
         lo, hi = spec.elevation
-        return Composition(focus, p["fill"], spec.center_y, None, lerp(lo, hi, p["intensity"]))
+        return Composition(focus, p["fill"], center_y, None, lerp(lo, hi, p["intensity"]))
     height = p["height"] if spec.max_height is None else min(p["height"], spec.max_height)
-    return Composition(focus, p["fill"], spec.center_y, height, None)
+    return Composition(focus, p["fill"], center_y, height, None)
 
 
 def focus_band(focus: str) -> tuple[float, float]:

@@ -190,6 +190,11 @@ class CompositionTest(unittest.TestCase):
         self.assertEqual(shotlib.composition("macro_push", {"focus": "top"}).focus, "top")
         self.assertEqual(shotlib.composition("orbit", {}).focus, "whole")
 
+    def test_plan_can_move_the_product_down_for_a_text_panel(self):
+        self.assertEqual(shotlib.composition("silhouette_reveal", {}).center_y, 0.5)
+        self.assertEqual(shotlib.composition("silhouette_reveal", {"centerY": 0.565}).center_y, 0.565)
+        self.assertEqual(shotlib.composition("cta_hero", {}).center_y, 0.56)
+
     def test_top_down_and_low_angle(self):
         td = shotlib.composition("top_down", {"intensity": 0.0})
         self.assertIsNone(td.height)

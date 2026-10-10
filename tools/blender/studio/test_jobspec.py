@@ -74,6 +74,13 @@ class ValidateTest(unittest.TestCase):
         self.bad(lambda j: j["shots"][0].update(travelX=0.8), "<= 0.5")
         self.bad(lambda j: j["shots"][0].update(travelX=-0.1), ">= 0")
 
+    def test_center_y_is_optional_and_bounded(self):
+        raw = valid_job()
+        self.assertNotIn("centerY", jobspec.validate_job(raw)["shots"][0]["params"])
+        raw["shots"][0]["params"]["centerY"] = 0.565
+        self.assertEqual(jobspec.validate_job(raw)["shots"][0]["params"]["centerY"], 0.565)
+        self.bad(lambda j: j["shots"][0]["params"].update(centerY=0.9), "<= 0.7")
+
     def bad(self, mutate, fragment: str):
         raw = valid_job()
         mutate(raw)

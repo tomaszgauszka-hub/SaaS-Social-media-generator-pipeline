@@ -96,6 +96,13 @@ const SFX_GAIN: Record<SfxKind, number> = {
 
 const ANGLES = [-25, 22, -35, 30, -18, 26];
 
+/**
+ * Hook framing: the product's top at (0.565 − 0.55 / 2) × 1920 ≈ 557 px, below the tallest hook band of any
+ * platform (Instagram: top bar 220 + band offset 74 + a two-line panel 242 = 536 px) — the headline never
+ * covers the product while it is revealed. The bottom (0.84) matches the CTA hero framing.
+ */
+const HOOK_FRAMING = { fill: 0.55, centerY: 0.565 } as const;
+
 /** Boundaries (ms) snapped to beats, then frames; every shot keeps ≥ minMs. */
 export function snapBoundaries(
   seconds: number[],
@@ -202,9 +209,11 @@ export function compilePlan(a: CompileInput): ReelPlan {
         angleDeg: ANGLES[i % ANGLES.length]!,
         height: s.preset === "low_angle" ? 0.25 : s.preset === "top_down" ? 1.4 : 0.55,
         focus: s.focus,
-        fill: macro ? 1.5 : s.role === "CTA" ? 0.56 : 0.62,
+        fill: macro ? 1.5 : s.role === "CTA" ? 0.56 : s.role === "HOOK" ? HOOK_FRAMING.fill : 0.62,
         sweepDeg:
           s.preset === "turntable" ? 90 : s.preset === "slow_turntable" ? 40 : s.preset === "orbit" ? 60 : 30,
+        // the hook headline sits in the top text band: the product starts below it on every platform
+        ...(s.role === "HOOK" && !macro ? { centerY: HOOK_FRAMING.centerY } : {}),
       },
       productAnimation,
       transitionIn: { type: transitionType, ms: TRANSITION_MS[transitionType] },
