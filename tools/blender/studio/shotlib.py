@@ -285,7 +285,9 @@ def _preset_state(preset: str, t: float, p: dict) -> ShotState:
 
 
 def light_switch(t: float) -> float:
-    """A product light switching on: off until 30 %, on by 42 % (a short LED-like ramp)."""
+    """A product light switching on: off until 30 %, on by 42 % (a short LED-like ramp).
+
+    Must equal LIGHT_SWITCH in packages/reel/src/contracts/media.ts (the clip cross-fade and the click SFX)."""
     return smoothstep(0.3, 0.42, t)
 
 

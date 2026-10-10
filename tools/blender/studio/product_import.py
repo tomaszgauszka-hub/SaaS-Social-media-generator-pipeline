@@ -6,7 +6,8 @@ only thing the studio adds is a transform hierarchy above it
     ProductPivot (animated: shot angle, turntable, lift)  →  ProductNormalize (static: centre XY, base on Z = 0,
     real-size scale)  →  [PartOffset_k (multi-part moves)]  →  imported objects
 
-and, for light-emitting products in the "on" state only, the strength of the model's own emission.
+and, for light-emitting products, the strength of the model's own emission (the "on" state). A surface without
+authored emission never starts to glow — except a translucent part named like a shade / diffuser (see _find_emissive).
 """
 
 from __future__ import annotations
@@ -23,6 +24,10 @@ import framing
 
 #: plausible real heights; outside this range a unit mix-up (cm / mm exported as m) is assumed
 PLAUSIBLE_M = (0.005, 5.0)
+#: object types rendered as surfaces; the non-mesh ones are evaluated to a mesh for bounds and framing
+SURFACE_TYPES = ("MESH", "CURVE", "SURFACE", "META", "FONT")
+#: emission colour given to a translucent named part that has none (only visible while the light is on)
+WARM_GLOW = (1.0, 0.72, 0.42, 1.0)
 
 
 @dataclass
@@ -47,6 +52,7 @@ class EmissiveTarget:
 class ProductModel:
     pivot: bpy.types.Object
     normalize: bpy.types.Object
+    #: objects with renderable geometry: meshes, and curves / text / surfaces / metaballs that evaluate to faces
     meshes: list[bpy.types.Object]
     parts: list[Part]
     #: every vertex in pivot space (N x 3): centred on XY, base on Z = 0, metres
@@ -77,7 +83,8 @@ def _import(path: str, fmt: str) -> None:
         with bpy.data.libraries.load(path, link=False) as (src, dst):
             dst.objects = [n for n in src.objects]
         for obj in dst.objects:
-            if obj is not None and obj.type in ("MESH", "EMPTY"):
+            # everything the other importers bring in too (curves, text, armatures …); cameras / lights are dropped
+            if obj is not None and obj.type not in ("CAMERA", "LIGHT"):
                 bpy.context.scene.collection.objects.link(obj)
     else:
         raise ValueError(f"unsupported model format {fmt!r}")
@@ -97,6 +104,20 @@ def _world_vertices(obj: bpy.types.Object, depsgraph) -> np.ndarray:
     return co @ m[:3, :3].T + m[:3, 3]
 
 
+def _has_surface(obj: bpy.types.Object, depsgraph) -> bool:
+    if obj.type == "MESH":
+        return len(obj.data.vertices) > 0
+    if obj.type not in SURFACE_TYPES:
+        return False
+    # a bevel profile or a path curve evaluates to edges only: it renders nothing and must not widen the bounds
+    ev = obj.evaluated_get(depsgraph)
+    mesh = ev.to_mesh()
+    try:
+        return mesh is not None and len(mesh.polygons) > 0
+    finally:
+        ev.to_mesh_clear()
+
+
 def _principled_nodes(mat: bpy.types.Material):
     if not mat or not mat.node_tree:
         return []
@@ -112,7 +133,8 @@ def import_product(path: str, fmt: str, real_height_m: float | None, emits_light
     for o in [o for o in new if o.type in ("CAMERA", "LIGHT")]:
         bpy.data.objects.remove(o, do_unlink=True)
     new = [o for o in bpy.data.objects if o not in before]
-    meshes = [o for o in new if o.type == "MESH" and len(o.data.vertices) > 0]
+    dg = bpy.context.evaluated_depsgraph_get()
+    meshes = [o for o in new if _has_surface(o, dg)]
     if not meshes:
         raise RuntimeError("the model contains no mesh")
 
@@ -194,9 +216,37 @@ def hint_pattern(hints: list[str]) -> re.Pattern | None:
     return re.compile("|".join(rf"(?<![a-z]){re.escape(w)}" for w in words)) if words else None
 
 
+def _authored_emission(node) -> bool:
+    """The surface already glows: a mapped emission colour, or a non-black colour at a non-zero strength (an
+    unset glTF colour is white at strength 0, an OBJ one black at strength 1 — neither emits)."""
+    col = node.inputs.get("Emission Color")
+    if col is None:
+        return False
+    return col.is_linked or (float(node.inputs["Emission Strength"].default_value) > 0
+                             and max(col.default_value[:3]) > 1e-4)
+
+
+def _translucent(mat: bpy.types.Material, node) -> bool:
+    """Light passes through the surface (transmission or alpha blending): a fabric / frosted shade, a diffuser."""
+    tw = node.inputs.get("Transmission Weight")
+    if tw is not None and (tw.is_linked or float(tw.default_value) > 1e-3):
+        return True
+    al = node.inputs.get("Alpha")
+    if al is None:
+        return False
+    if al.is_linked:  # a mapped alpha may be a cut-out mask: only an alpha-blended material counts
+        return getattr(mat, "surface_render_method", "") == "BLENDED"
+    return float(al.default_value) < 0.999
+
+
 def _find_emissive(model: ProductModel, objs, hints: list[str]) -> None:
     """Materials that glow when the product's light is on: names matching the hints first, else materials
-    whose emission colour is driven by an authored emissive map. Only Emission Strength is ever changed."""
+    whose emission colour is driven by an authored emissive map.
+
+    The real product's look is kept: an authored emission keeps its colour (only its Emission Strength is
+    animated, from the authored value up); a named part without one glows only when it is translucent (it gets
+    the warm WARM_GLOW colour, at strength 0 while off). An opaque named part (a black metal shade) is left
+    untouched — the interior ProductLight lights it physically."""
     pat = hint_pattern(hints)
     mats: list[bpy.types.Material] = []
     for o in model.meshes:
@@ -217,22 +267,31 @@ def _find_emissive(model: ProductModel, objs, hints: list[str]) -> None:
             if col is not None and col.is_linked:
                 mapped.append(m)
                 break
-    if named:
-        model.emissive_mode = "name_hint"
-        for m in named:
-            for n in _principled_nodes(m):
-                col = n.inputs.get("Emission Color")
-                if col is not None and not col.is_linked and max(col.default_value[:3]) < 1e-4:
-                    col.default_value = (1.0, 0.72, 0.42, 1.0)  # warm white glow, only visible when on
-                st = n.inputs["Emission Strength"]
+    glowing: list[bpy.types.Material] = []
+    for m in named:
+        for n in _principled_nodes(m):
+            col, st = n.inputs.get("Emission Color"), n.inputs["Emission Strength"]
+            if col is None or st.is_linked:
+                continue
+            if _authored_emission(n):
                 model.emissive.append(EmissiveTarget(st, float(st.default_value), max(1.2, float(st.default_value))))
+            elif _translucent(m, n):
+                col.default_value = WARM_GLOW  # unlinked: an authored map would have counted as emission
+                model.emissive.append(EmissiveTarget(st, 0.0, 1.2))
+            else:
+                continue
+            if m not in glowing:
+                glowing.append(m)
+    if glowing:
+        model.emissive_mode = "name_hint"
     elif mapped:
         model.emissive_mode = "emissive_map"
         for m in mapped:
             for n in _principled_nodes(m):
                 st = n.inputs["Emission Strength"]
                 model.emissive.append(EmissiveTarget(st, float(st.default_value), max(5.0, float(st.default_value))))
-    for m in named or mapped:
+        glowing = mapped
+    for m in glowing:
         # the interior light does the illumination; the glow is the surface's look, not a sampled emitter
         m.cycles.emission_sampling = "NONE"
 

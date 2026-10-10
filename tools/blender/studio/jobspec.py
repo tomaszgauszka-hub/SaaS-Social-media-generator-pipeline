@@ -122,10 +122,11 @@ def validate_params(v, path: str) -> dict:
 def validate_shot(v, path: str) -> dict:
     keys = {"id", "preset", "technique", "durationMs", "params", "productAnimation", "lighting", "renderFps",
             "overscan"}
-    _obj(v, path, keys)
+    _obj(v, path, keys, {"travelX"})
     sid = _str(v["id"], f"{path}.id")
     if not SHOT_ID.fullmatch(sid):
         _fail(f"{path}.id", "expected sh + two digits")
+    extra = {"travelX": _num(v["travelX"], f"{path}.travelX", 0, 0.5)} if "travelX" in v else {}
     return {
         "id": sid,
         "preset": _enum(v["preset"], f"{path}.preset", SHOT_PRESETS),
@@ -136,6 +137,7 @@ def validate_shot(v, path: str) -> dict:
         "lighting": _enum(v["lighting"], f"{path}.lighting", LIGHTING_PRESETS),
         "renderFps": _num(v["renderFps"], f"{path}.renderFps", 6, 60, integer=True),
         "overscan": _num(v["overscan"], f"{path}.overscan", 1, 1.6),
+        **extra,
     }
 
 

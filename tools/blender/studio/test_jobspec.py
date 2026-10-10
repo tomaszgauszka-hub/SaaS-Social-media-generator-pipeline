@@ -65,6 +65,14 @@ class ValidateTest(unittest.TestCase):
         )
         self.assertEqual(job["product"]["emissiveHints"], [])
         self.assertNotIn("realHeightM", job["product"])
+        self.assertNotIn("travelX", job["shots"][0])
+
+    def test_plate_travel_is_optional_and_bounded(self):
+        raw = valid_job()
+        raw["shots"][0]["travelX"] = 0.06
+        self.assertEqual(jobspec.validate_job(raw)["shots"][0]["travelX"], 0.06)
+        self.bad(lambda j: j["shots"][0].update(travelX=0.8), "<= 0.5")
+        self.bad(lambda j: j["shots"][0].update(travelX=-0.1), ">= 0")
 
     def bad(self, mutate, fragment: str):
         raw = valid_job()

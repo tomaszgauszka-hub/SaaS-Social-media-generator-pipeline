@@ -4,7 +4,7 @@ import path from "node:path";
 import { FatalError } from "@cre/shared";
 import { z } from "zod";
 import type { CallContext } from "../capabilities/types.ts";
-import { ProductAnimation, ShotPreset } from "../contracts/ids.ts";
+import { ProductAnimation, ShotPreset, ShotTechnique } from "../contracts/ids.ts";
 import { StudioJob, StudioResult, StudioShotResult } from "../contracts/media.ts";
 import { withResourceLock } from "../util/lock.ts";
 import { runProcess } from "../util/proc.ts";
@@ -31,6 +31,9 @@ export const StudioShotOutput = StudioShotResult.extend({
   fallbackPreset: ShotPreset.optional(),
   fallbackReason: z.string().max(300).optional(),
   animationFallback: ProductAnimation.optional(),
+  /** the technique was not renderable (a relight of a product without a light): this one was rendered instead */
+  fallbackTechnique: ShotTechnique.optional(),
+  fallbackTechniqueReason: z.string().max(300).optional(),
   overscan: z.number().min(1).max(1.6).optional(),
   bitDepth: z.union([z.literal(8), z.literal(16)]).optional(),
   viewTransform: z.string().optional(),
@@ -99,6 +102,43 @@ export function studioCommand(
   );
 }
 
+const rendererVersions = new Map<string, Promise<string>>();
+
+/**
+ * Identity of the renderer (bpy / Blender version + build hash), resolved once per process. It is part of every
+ * render cache key: renders of an older Blender are never reused, nor cut next to renders of a newer one.
+ */
+export function studioRendererVersion(
+  tools: Pick<ReelTools, "blenderPython" | "blenderBin">,
+): Promise<string> {
+  const probe = tools.blenderPython
+    ? {
+        command: tools.blenderPython,
+        args: ["-c", "import bpy; print('bpy', bpy.app.version_string, bpy.app.build_hash.decode())"],
+      }
+    : tools.blenderBin
+      ? { command: tools.blenderBin, args: ["-b", "--factory-startup", "--version"] }
+      : undefined;
+  if (!probe) return Promise.resolve("none"); // nothing renders: every lookup misses, runStudio explains why
+  const id = [probe.command, ...probe.args].join("\0");
+  let v = rendererVersions.get(id);
+  if (!v) {
+    v = runProcess(probe.command, probe.args, {
+      env: studioEnv({ blenderThreads: 0 }),
+      timeoutMs: 120_000,
+      maxOutputBytes: 16 * 1024,
+    }).then((r) => {
+      const lines = r.stdout.split("\n").map((l) => l.trim());
+      const version = lines.filter((l) => /^(bpy |Blender \d)|^build hash:/.test(l)).join(" ");
+      if (!version) throw new FatalError(`cannot tell the Blender version of ${probe.command}`);
+      return version.slice(0, 200);
+    });
+    rendererVersions.set(id, v);
+    v.catch(() => rendererVersions.delete(id)); // a failed probe is retried by the next call
+  }
+  return v;
+}
+
 /** Only what Blender needs — API keys and other secrets of the worker never reach the render process. */
 export function studioEnv(
   tools: Pick<ReelTools, "blenderThreads">,
@@ -137,11 +177,19 @@ export function studioFrameCount(job: Pick<StudioJob, "shots">): number {
   }, 0);
 }
 
+/**
+ * Longest a studio run waits for a free Blender slot before it fails retryably — as long as a reel job may run
+ * (reel.produce timeout), so it only bounds runs without a job deadline (CLI, tests) and wedged hosts.
+ */
+export const STUDIO_LOCK_WAIT_MS = 60 * 60_000;
+
 export interface RunStudioOptions {
   overrides?: StudioOverrides;
   tools?: ReelTools;
   /** default: 2 min + a generous per-frame budget for the profile */
   timeoutMs?: number;
+  /** default STUDIO_LOCK_WAIT_MS */
+  lockTimeoutMs?: number;
   onProgress?: (p: StudioProgress) => void;
 }
 
@@ -203,7 +251,11 @@ export async function runStudio(
             ctx.logger?.debug({ jobKey: parsed.jobKey, line }, "studio phase");
         },
       }),
-    { ...(ctx.signal ? { signal: ctx.signal } : {}), pollMs: 500 },
+    {
+      ...(ctx.signal ? { signal: ctx.signal } : {}),
+      pollMs: 500,
+      timeoutMs: opts.lockTimeoutMs ?? STUDIO_LOCK_WAIT_MS,
+    },
   );
   if (proc.code !== 0) {
     const tail = (proc.stderr.trim() || proc.stdout.trim()).split("\n").slice(-15).join("\n");

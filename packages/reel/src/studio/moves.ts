@@ -155,6 +155,14 @@ export function requiredOverscan(move: PlateMove): number {
   return Math.round(need * 1e4) / 1e4;
 }
 
+/** Largest sideways shift of the window during the move (composed-frame widths) — the margin the framing keeps. */
+export function windowTravelX(move: PlateMove): number {
+  let travel = 0;
+  for (let k = 0; k <= 64; k++) travel = Math.max(travel, Math.abs(moveState(move, k / 64).dx));
+  // rounded up: never less margin than the move needs
+  return Math.max(0, Math.ceil(travel * 1e4 - 1e-6) / 1e4);
+}
+
 function moveState(move: PlateMove, t: number): { z: number; dx: number; dy: number } {
   const e = ease(move.easing, t);
   return {

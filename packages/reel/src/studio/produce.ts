@@ -7,7 +7,7 @@ import type { ShotClip } from "../contracts/media.ts";
 import type { PlanShot, ReelPlan } from "../contracts/plan.ts";
 import type { ProductSource } from "../contracts/product.ts";
 import { cacheKey, FileCache, fileSha256 } from "../util/cache.ts";
-import type { ReelTools } from "../util/tools.ts";
+import { resolveReelTools, type ReelTools } from "../util/tools.ts";
 import { STUDIO_SHOT_NAMESPACE, studioCacheKey, studioCodeVersion, type StudioOverrides } from "./cache.ts";
 import {
   buildShotClipArgs,
@@ -17,13 +17,22 @@ import {
   type ShotClipArgsInput,
 } from "./encode.ts";
 import { blenderShotGroups, buildStudioJob } from "./job.ts";
-import { runStudio, StudioShotOutput, type LocatedShotResult, type StudioProgress } from "./run.ts";
+import {
+  runStudio,
+  StudioShotOutput,
+  studioRendererVersion,
+  type LocatedShotResult,
+  type StudioProgress,
+  type StudioRun,
+} from "./run.ts";
 
 /*
  * Plan → shot clips, with two cache levels:
- *   studio-shot/<key>   Blender output of one shot (key: model sha, studio code, profile, set, camera, spec)
+ *   studio-shot/<key>   Blender output of one shot (key: model sha, studio code, Blender version, profile, set,
+ *                       camera, spec)
  *   shot-clip/<key>     the encoded 1080×1920 clip + its product track (key: studio key + move / timing / fps)
  * Locale and A/B variants of a product therefore never re-render a shot, and re-timing a plate only re-encodes.
+ * Shots a failed / killed / timed-out studio run finished are cached too, so a retry renders only the rest.
  */
 
 export const SHOT_CLIP_NAMESPACE = "shot-clip";
@@ -48,6 +57,8 @@ export interface ShotRenderInfo {
   technique: PlanShot["technique"];
   renderedPreset: PlanShot["preset"];
   fallbackPreset?: PlanShot["preset"];
+  /** rendered as this technique instead of the planned one (a relight of a product without a light) */
+  fallbackTechnique?: PlanShot["technique"];
   animationFallback?: string;
   frames: number;
   renderSize: { width: number; height: number };
@@ -77,6 +88,27 @@ async function cachedShot(
   const dir = cache.dir(STUDIO_SHOT_NAMESPACE, key);
   if (!parsed.data.files.every((f) => cache.has(STUDIO_SHOT_NAMESPACE, key, f))) return undefined;
   return { ...parsed.data, id: shotId, dir };
+}
+
+/**
+ * A shot a failed studio run had finished: Blender writes <shotId>/result.json (atomically) after its last file.
+ * Results older than the run are leftovers of an earlier one (other code / overrides) and never count (2 s of
+ * slack for coarse file-system clocks).
+ */
+async function finishedShot(
+  dir: string,
+  shotId: string,
+  since: number,
+): Promise<StudioShotOutput | undefined> {
+  const file = path.join(dir, shotId, "result.json");
+  try {
+    if ((await fsp.stat(file)).mtimeMs < since - 2000) return undefined;
+    const parsed = StudioShotOutput.safeParse(JSON.parse(await fsp.readFile(file, "utf8")));
+    if (!parsed.success || parsed.data.id !== shotId) return undefined;
+    return parsed.data.files.every((f) => fs.existsSync(path.join(dir, shotId, f))) ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Moves a freshly rendered shot directory into the cache atomically (a concurrent install wins harmlessly). */
@@ -146,7 +178,9 @@ export async function produceShotClips(
   if (!product.model3d) throw new Error(`product ${product.id} has no 3D model for its Blender shots`);
   const modelSha =
     product.model3d.sha256 ?? plan.product.model3dSha ?? (await fileSha256(product.model3d.path));
+  const tools = opts.tools ?? resolveReelTools();
   const codeVersion = studioCodeVersion();
+  const renderer = await studioRendererVersion(tools);
   const located = new Map<string, { result: LocatedShotResult; key: string; hit: boolean }>();
   const jobOpts = {
     modelSha,
@@ -159,7 +193,11 @@ export async function produceShotClips(
     const keys = new Map(
       probe.shots.map((s) => [
         s.id,
-        studioCacheKey(s, probe, { codeVersion, ...(opts.overrides ? { overrides: opts.overrides } : {}) }),
+        studioCacheKey(s, probe, {
+          codeVersion,
+          renderer,
+          ...(opts.overrides ? { overrides: opts.overrides } : {}),
+        }),
       ]),
     );
     const missing: PlanShot[] = [];
@@ -179,11 +217,23 @@ export async function produceShotClips(
         ...job0,
         output: { ...job0.output, dir: path.join(ctx.workDir, "studio", job0.jobKey.slice(0, 20)) },
       };
-      const run = await runStudio(job, ctx, {
-        ...(opts.overrides ? { overrides: opts.overrides } : {}),
-        ...(opts.tools ? { tools: opts.tools } : {}),
-        ...(opts.onProgress ? { onProgress: opts.onProgress } : {}),
-      });
+      const started = Date.now();
+      let run: StudioRun;
+      try {
+        run = await runStudio(job, ctx, {
+          tools,
+          ...(opts.overrides ? { overrides: opts.overrides } : {}),
+          ...(opts.onProgress ? { onProgress: opts.onProgress } : {}),
+        });
+      } catch (err) {
+        // keep every shot Blender finished before it failed / was killed: the retry resumes from the cache
+        const dir = path.resolve(job.output.dir);
+        for (const s of missing) {
+          const r = await finishedShot(dir, s.id, started);
+          if (r) await installShot(cache, keys.get(s.id)!, path.join(dir, s.id), r).catch(() => undefined);
+        }
+        throw err;
+      }
       out.studioRuns += 1;
       out.studioWallMs += run.wallMs;
       for (const r of run.result.shots) {
@@ -268,6 +318,7 @@ export async function produceShotClips(
       technique: r.technique,
       renderedPreset: r.renderedPreset ?? shot.preset,
       ...(r.fallbackPreset ? { fallbackPreset: r.fallbackPreset } : {}),
+      ...(r.fallbackTechnique ? { fallbackTechnique: r.fallbackTechnique } : {}),
       ...(r.animationFallback ? { animationFallback: r.animationFallback } : {}),
       frames: r.files.length,
       renderSize: { width: r.width, height: r.height },

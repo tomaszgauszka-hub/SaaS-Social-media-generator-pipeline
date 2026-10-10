@@ -1,7 +1,7 @@
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { runFfmpeg } from "@cre/media";
-import type { ShotClip } from "../contracts/media.ts";
+import { lightSwitchFrame, type ShotClip } from "../contracts/media.ts";
 import type { PlanShot, ReelPlan } from "../contracts/plan.ts";
 import type { Rect } from "../contracts/profiles.ts";
 import { boxThroughWindow, plateMove, trackTimes, windowAt, windowExprs, type PlateMove } from "./moves.ts";
@@ -140,7 +140,8 @@ export function buildShotClipArgs(input: ShotClipArgsInput): ShotClipArgs {
   }
 
   const overscan = shot.overscan ?? 1;
-  const move = plateMove(planShot.preset, planShot.params, shot.technique);
+  // the planned technique's move: the studio sized the overscan and the product margin for it (job.ts)
+  const move = plateMove(planShot.preset, planShot.params, planShot.technique);
   const w = windowExprs(move, overscan, frameProgress(N));
   const persp =
     `perspective=x0='${w.left}*W':y0='${w.top}*H':x1='${w.right}*W':y1='${w.top}*H':` +
@@ -157,7 +158,7 @@ export function buildShotClipArgs(input: ShotClipArgsInput): ShotClipArgs {
 
   if (shot.technique === "relight") {
     // frame-aligned: xfade starts on the first frame at / after the offset (progress 0 there)
-    const offset = (Math.round(0.3 * N) / fps).toFixed(4);
+    const offset = (lightSwitchFrame(N) / fps).toFixed(4);
     const fade = (Math.max(2, Math.round(0.12 * N)) / fps).toFixed(4);
     const graph =
       `[0:v]format=gbrp16le,${lut(TO_LINEAR)}[off];[1:v]format=gbrp16le,${lut(TO_LINEAR)}[on];` +

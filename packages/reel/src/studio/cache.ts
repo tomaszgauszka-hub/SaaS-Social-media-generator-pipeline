@@ -7,13 +7,14 @@ import { cacheKey } from "../util/cache.ts";
 
 /*
  * Per-shot render cache. A shot is re-rendered only when something that changes its pixels changes: the model
- * bytes, the studio code (hash of the Python package), the profile, the set, the camera, the render size, the seed
- * or the shot's own spec. Fields that cannot change the pixels are normalised away so locale / A/B variants and
- * QA retries that only re-time a plate reuse it (a plate's duration lives in the FFmpeg move, not in Blender).
+ * bytes, the studio code (hash of the Python package), the renderer (bpy / Blender version and build), the
+ * profile, the set, the camera, the render size, the seed or the shot's own spec. Fields that cannot change the
+ * pixels are normalised away so locale / A/B variants and QA retries that only re-time a plate reuse it (a plate's
+ * duration lives in the FFmpeg move, not in Blender).
  */
 
 export const STUDIO_SHOT_NAMESPACE = "studio-shot";
-export const STUDIO_SHOT_CACHE_VERSION = "studio-shot/1";
+export const STUDIO_SHOT_CACHE_VERSION = "studio-shot/2";
 
 /** Directory of the Blender studio package (tools/blender/studio). */
 export function studioToolsDir(): string {
@@ -74,7 +75,7 @@ export function shotRenderInputs(shot: StudioShotSpec, job: StudioJob): Record<s
       lighting: shot.lighting,
       ...(sequence
         ? { durationMs: shot.durationMs, renderFps: shot.renderFps }
-        : { overscan: shot.overscan }),
+        : { overscan: shot.overscan, travelX: shot.travelX ?? 0 }),
     },
   };
 }
@@ -82,10 +83,12 @@ export function shotRenderInputs(shot: StudioShotSpec, job: StudioJob): Record<s
 export function studioCacheKey(
   shot: StudioShotSpec,
   job: StudioJob,
-  opts: { codeVersion?: string; overrides?: StudioOverrides } = {},
+  /** renderer: studioRendererVersion() of the Blender that renders (or rendered) the shot */
+  opts: { codeVersion?: string; renderer: string; overrides?: StudioOverrides },
 ): string {
   return cacheKey(STUDIO_SHOT_NAMESPACE, STUDIO_SHOT_CACHE_VERSION, {
     code: opts.codeVersion ?? studioCodeVersion(),
+    renderer: opts.renderer,
     ...shotRenderInputs(shot, job),
     overrides: opts.overrides ?? {},
   });

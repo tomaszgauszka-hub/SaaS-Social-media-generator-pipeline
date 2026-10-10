@@ -32,8 +32,21 @@ export const StudioShotSpec = z.object({
   renderFps: z.number().int().min(6).max(60),
   /** plate: extra canvas around the frame so FFmpeg can push / slide (1.0 = none) */
   overscan: z.number().min(1).max(1.6),
+  /** plate: largest sideways shift of the FFmpeg move's window (composed-frame widths) — the studio frames the
+   *  product that much narrower on each side so the slide never cuts it */
+  travelX: z.number().min(0).max(0.5).optional(),
 });
 export type StudioShotSpec = z.infer<typeof StudioShotSpec>;
+
+/**
+ * A relight shot's product light switches on over this share of the shot (shotlib.light_switch =
+ * smoothstep(0.3, 0.42)). The shot clip cross-fades off → on from the frame lightSwitchFrame() returns, and the
+ * director puts the light-switch click on that same frame.
+ */
+export const LIGHT_SWITCH = { start: 0.3, end: 0.42 } as const;
+
+/** Index of the frame (of a shot's `frames`) on which the light starts to switch on. */
+export const lightSwitchFrame = (frames: number): number => Math.round(LIGHT_SWITCH.start * frames);
 
 export const StudioJob = z.object({
   version: z.literal(STUDIO_JOB_VERSION),

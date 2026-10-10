@@ -21,6 +21,7 @@ import {
   buildStudioJob,
   inferEmitsLight,
   plateOverscan,
+  plateTravelX,
   productRealHeightM,
   sequenceRenderFps,
   STUDIO_RENDER_SCALE,
@@ -36,6 +37,7 @@ import {
   trackTimes,
   windowAt,
   windowExprs,
+  windowTravelX,
   type Easing,
 } from "./moves.ts";
 import { parseProgressLine, studioCommand, studioEnv, studioFrameCount, StudioShotOutput } from "./run.ts";
@@ -207,11 +209,29 @@ describe("buildStudioJob", () => {
     expect(buildStudioJob(plan, lamp, "QUALITY", "/a").jobKey).not.toBe(a.jobKey);
   });
 
-  it("QUALITY renders every sequence frame at the profile rate", () => {
+  it("renders sequences at a rate the job can afford; FAST halves only the slow presets", () => {
     const job = buildStudioJob(plan, lamp, "QUALITY", "/q");
-    expect(job.shots.find((s) => s.id === "sh02")!.renderFps).toBe(30);
+    expect(job.shots.find((s) => s.id === "sh02")!.renderFps).toBe(15);
+    expect(sequenceRenderFps("turntable", "QUALITY")).toBe(15);
     expect(sequenceRenderFps("turntable", "FAST")).toBe(StudioProfileDefaults.FAST.sequenceFps);
     expect(sequenceRenderFps("slow_turntable", "FAST")).toBe(8);
+  });
+
+  it("tells Blender how far a plate's move slides, so the framing keeps the product inside", () => {
+    const job = buildStudioJob(plan, lamp, "FAST", "/x");
+    const travel = Object.fromEntries(job.shots.map((s) => [s.preset, s.travelX]));
+    expect(travel).toEqual({
+      silhouette_reveal: 0,
+      slow_turntable: 0,
+      macro_push: 0,
+      camera_slide: plateTravelX({
+        preset: "camera_slide",
+        technique: "plate",
+        params: plan.shots[3]!.params,
+      }),
+      cta_hero: 0,
+    });
+    expect(travel.camera_slide).toBeCloseTo(0.055, 4); // lerp(0.035, 0.075, 0.5)
   });
 
   it("honours the product profile's traits and refuses impossible jobs", () => {
@@ -311,7 +331,9 @@ describe("TS ⇄ Python contract sync", () => {
 describe("studioCacheKey", () => {
   const job = buildStudioJob(plan, lamp, "FAST", "/w");
   const code = "c0de";
-  const key = (j = job, i = 2, codeVersion = code) => studioCacheKey(j.shots[i]!, j, { codeVersion });
+  const renderer = "bpy 5.2.2 LTS d13f752e3b9c";
+  const key = (j = job, i = 2, codeVersion = code) =>
+    studioCacheKey(j.shots[i]!, j, { codeVersion, renderer });
   const withShot = (i: number, patch: object) => ({
     ...job,
     shots: job.shots.map((s, k) => (k === i ? { ...s, ...patch } : s)),
@@ -344,9 +366,12 @@ describe("studioCacheKey", () => {
     expect(key({ ...job, camera: { ...job.camera, lensMm: 85 } })).not.toBe(base);
     expect(key({ ...job, seed: 1 })).not.toBe(base);
     expect(key(job, 2, "other-code")).not.toBe(base);
-    expect(studioCacheKey(job.shots[2]!, job, { codeVersion: code, overrides: { samples: 4 } })).not.toBe(
-      base,
-    );
+    expect(
+      studioCacheKey(job.shots[2]!, job, { codeVersion: code, renderer, overrides: { samples: 4 } }),
+    ).not.toBe(base);
+    // another Blender build renders other pixels (Cycles, OIDN, colour management, importers)
+    expect(studioCacheKey(job.shots[2]!, job, { codeVersion: code, renderer: "bpy 5.3.0" })).not.toBe(base);
+    expect(key(withShot(2, { travelX: 0.07 }))).not.toBe(base);
     // a sequence's duration and frame rate are rendered frames
     expect(key(withShot(1, { durationMs: 4000 }), 1)).not.toBe(key(job, 1));
     expect(key(withShot(1, { renderFps: 15 }), 1)).not.toBe(key(job, 1));
@@ -440,6 +465,19 @@ describe("plate moves", () => {
     const pull = plateMove("macro_pull", { intensity: 0.6, angleDeg: -25 });
     expect(windowAt(pull, 1.18, 0).s).toBeCloseTo(composed.s, 12);
     expect(windowAt(pull, 1.18, 1).s).toBeGreaterThan(composed.s);
+  });
+
+  it("reports the sideways travel of every move (the margin Blender keeps around the product)", () => {
+    expect(windowTravelX(plateMove("camera_slide", { intensity: 1, angleDeg: -25 }))).toBe(0.075);
+    expect(windowTravelX(plateMove("camera_slide", { intensity: 0, angleDeg: 25 }))).toBe(0.035);
+    expect(windowTravelX(plateMove("detail_closeup", { intensity: 1, angleDeg: 25 }))).toBe(0.045);
+    for (const preset of SHOT_PRESETS) {
+      const params = { intensity: 1, angleDeg: -25 } as never;
+      if (preset !== "camera_slide" && preset !== "detail_closeup")
+        expect(plateTravelX({ preset, technique: "plate", params })).toBe(0);
+      expect(plateTravelX({ preset, technique: "relight", params })).toBe(0);
+      expect(plateTravelX({ preset, technique: "sequence", params })).toBe(0);
+    }
   });
 
   it("slides follow the side the product faces; relights only drift", () => {
@@ -690,6 +728,16 @@ describe("studio bridge", () => {
       somethingNew: 1,
     };
     expect(StudioShotOutput.parse(ok).fallbackPreset).toBe("orbit");
+    const asPlate = {
+      ...ok,
+      technique: "plate",
+      files: ["plate.png"],
+      productBoxes: [ok.productBoxes[0]],
+      fallbackTechnique: "plate",
+      fallbackTechniqueReason: "the product has no light of its own to switch on: one plate at full light",
+    };
+    expect(StudioShotOutput.parse(asPlate).fallbackTechnique).toBe("plate");
+    expect(() => StudioShotOutput.parse({ ...asPlate, fallbackTechnique: "veo" })).toThrow();
     expect(() => StudioShotOutput.parse({ ...ok, files: ["../../etc/passwd", "on.png"] })).toThrow();
     expect(() =>
       StudioShotOutput.parse({

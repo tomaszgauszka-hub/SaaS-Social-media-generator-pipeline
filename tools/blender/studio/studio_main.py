@@ -3,6 +3,9 @@
     <output.dir>/<shotId>/plate.png | off.png on.png | f_0001.png …   + <shotId>/result.json (StudioShotResult)
     <output.dir>/result.json                                           (StudioResult summary)
 
+A shot's result.json is written (atomically) once all its files are, so the bridge can keep the finished shots of a
+run that is killed or fails later.
+
 Stdout carries progress for the TypeScript bridge: "PROGRESS shot=sh01 frame=3/40" and "PHASE <name> ms=<n>".
 All keyframes come from shotlib (pure, unit-tested) and framing (pure camera math); this module only applies
 them to Blender objects, renders, and measures where the product lands in every image.
@@ -34,10 +37,20 @@ PLATE_NAME = "plate.png"
 RELIGHT_NAMES = ("off.png", "on.png")
 #: relight plates: the studio lights run at this level so the product's own light reads clearly
 RELIGHT_DIM = 0.35
+#: widest the product is framed (share of the frame width) when the composition does not overflow the frame
+MAX_WIDTH = 0.92
 
 
 def log(msg: str) -> None:
     print(msg, flush=True)
+
+
+def write_json(path: str, data: dict) -> None:
+    """Written to a temporary file and renamed: a reader never sees a half-written result."""
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1)
+    os.replace(tmp, path)
 
 
 def ms_since(t0: float) -> int:
@@ -121,6 +134,8 @@ class ShotPlan:
     spec: dict
     preset: str
     fallback: str | None
+    #: the technique rendered (a relight of a product without a light of its own becomes a plate)
+    technique: str
     notes: dict
     comp: shotlib.Composition
     width: int  # rendered image size
@@ -137,6 +152,11 @@ def _subsample(points: np.ndarray, limit: int) -> list[framing.Vec]:
     return framing.subsample([tuple(p) for p in points.tolist()], limit) if len(points) else []
 
 
+def has_own_light(model: product_import.ProductModel, job: dict) -> bool:
+    """The product can switch on: an interior ProductLight (Studio) or glowing surfaces."""
+    return (job["product"]["emitsLight"] and model.bulb is not None) or bool(model.emissive)
+
+
 def plan_shot(model: product_import.ProductModel, job: dict, spec: dict, cfg: dict, scale_override) -> ShotPlan:
     preset, fallback = shotlib.resolve_preset(spec["preset"], len(model.parts))
     params = spec["params"]
@@ -144,6 +164,8 @@ def plan_shot(model: product_import.ProductModel, job: dict, spec: dict, cfg: di
     kw = dict(part_count=len(model.parts), emits_light=emits, lighting=spec["lighting"])
     comp = shotlib.composition(preset, params)
     technique = spec["technique"]
+    if technique == "relight" and not has_own_light(model, job):
+        technique = "plate"  # off and on would be the same pixels: one plate at full light instead
     base_scale = cfg["scale"] if technique == "sequence" else cfg["plateScale"]
     if scale_override:
         base_scale *= scale_override
@@ -162,14 +184,6 @@ def plan_shot(model: product_import.ProductModel, job: dict, spec: dict, cfg: di
            for p in _subsample(band, 700)]
     lo, hi = framing.bounds(pts)
     target = ((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2)
-    max_w = 0.92 if comp.fill <= 1.0 else None
-    lens = job["camera"]["lensMm"]
-    if comp.elevation_deg is not None:
-        fit = framing.fit_camera(pts, target, 0.0, comp.elevation_deg, lens, cw, ch, comp.fill,
-                                 (0.5, comp.center_y), max_w)
-    else:
-        cam_z = lo[2] + comp.height * (hi[2] - lo[2])
-        fit = framing.fit_at_height(pts, target, 0.0, cam_z, lens, cw, ch, comp.fill, (0.5, comp.center_y), max_w)
 
     if technique == "plate":
         states = [rest]
@@ -186,6 +200,21 @@ def plan_shot(model: product_import.ProductModel, job: dict, spec: dict, cfg: di
             notes.update(n)
         files = [f"f_{k + 1:04d}.png" for k in range(len(states))]
 
+    # sideways travel of the frame over the product (frame widths): a plate's FFmpeg slide (spec travelX), a
+    # sequence's camera truck (frame heights). The framing keeps that much margin so the product stays whole.
+    if technique == "sequence":
+        travel = max(abs(s.cam_truck) for s in states) * ch / cw
+    else:
+        travel = spec.get("travelX", 0.0)
+    max_w = MAX_WIDTH - 2.0 * travel if comp.fill <= 1.0 else None
+    lens = job["camera"]["lensMm"]
+    if comp.elevation_deg is not None:
+        fit = framing.fit_camera(pts, target, 0.0, comp.elevation_deg, lens, cw, ch, comp.fill,
+                                 (0.5, comp.center_y), max_w)
+    else:
+        cam_z = lo[2] + comp.height * (hi[2] - lo[2])
+        fit = framing.fit_at_height(pts, target, 0.0, cam_z, lens, cw, ch, comp.fill, (0.5, comp.center_y), max_w)
+
     hf = framing.frame_height_at(fit.focus_distance, lens)
     poses = []
     for s in states:
@@ -198,7 +227,7 @@ def plan_shot(model: product_import.ProductModel, job: dict, spec: dict, cfg: di
         poses.append(FramePose(s, cam, basis, framing.dot(framing.sub(tgt, cam), basis.forward),
                                angle + s.prod_rot, s.prod_lift * H))
     w, h = (int(round(cw * overscan)), int(round(ch * overscan)))
-    return ShotPlan(spec, preset, fallback, notes, comp, w, h, overscan, fit, poses, files,
+    return ShotPlan(spec, preset, fallback, technique, notes, comp, w, h, overscan, fit, poses, files,
                     any(p.state.accent > 0 for p in poses), any(p.state.sweep is not None for p in poses))
 
 
@@ -216,7 +245,7 @@ def set_extent(model: product_import.ProductModel, job: dict, plans: list[ShotPl
     lens = job["camera"]["lensMm"]
     pts = _subsample(model.points, 600)
     fit = framing.fit_camera(pts, (0.0, 0.0, model.height / 2), 0.0, 0.0, lens, job["output"]["width"],
-                             job["output"]["height"], SET_MIN_FILL, (0.5, 0.5), 0.92)
+                             job["output"]["height"], SET_MIN_FILL, (0.5, 0.5), MAX_WIDTH)
     bound = fit.distance * SET_MAX_DOLLY + 0.5 * model.size
     need = max(framing.length(framing.sub(pose.cam, (0.0, 0.0, model.height / 2)))
                for pl in plans for pose in pl.poses)
@@ -350,7 +379,8 @@ def render_shot(studio: Studio, plan: ShotPlan, out_dir: str, samples: int) -> d
     shutil.rmtree(shot_dir, ignore_errors=True)
     os.makedirs(shot_dir)
     studio.clear_animation()
-    dim = RELIGHT_DIM if spec["technique"] == "relight" else 1.0
+    technique = plan.technique
+    dim = RELIGHT_DIM if technique == "relight" else 1.0
     studio.lights.activate(spec["lighting"], plan.fit.target, dim)
     studio.lights.static_roles_off(plan.accent_used, plan.sweep_used)
 
@@ -360,9 +390,9 @@ def render_shot(studio: Studio, plan: ShotPlan, out_dir: str, samples: int) -> d
     cam.shift_y = plan.fit.shift_y / plan.overscan
     scene.render.resolution_x = plan.width
     scene.render.resolution_y = plan.height
-    sequence = spec["technique"] == "sequence"
+    sequence = technique == "sequence"
     scene.render.use_motion_blur = sequence and studio.job["camera"]["motionBlur"]
-    scene.render.image_settings.color_depth = "16" if spec["technique"] == "relight" else "8"
+    scene.render.image_settings.color_depth = "16" if technique == "relight" else "8"
     scene.render.fps = spec["renderFps"] if sequence else 30
     scene.frame_start, scene.frame_end = 1, max(1, len(plan.poses))
     keyed = scene.render.use_motion_blur
@@ -390,7 +420,7 @@ def render_shot(studio: Studio, plan: ShotPlan, out_dir: str, samples: int) -> d
     fit = plan.fit
     result = {
         "id": sid,
-        "technique": spec["technique"],
+        "technique": technique,
         "files": plan.files,
         "width": plan.width,
         "height": plan.height,
@@ -407,7 +437,7 @@ def render_shot(studio: Studio, plan: ShotPlan, out_dir: str, samples: int) -> d
         "overscan": plan.overscan,
         "composedWidth": int(round(plan.width / plan.overscan)),
         "composedHeight": int(round(plan.height / plan.overscan)),
-        "bitDepth": 16 if spec["technique"] == "relight" else 8,
+        "bitDepth": 16 if technique == "relight" else 8,
         "viewTransform": VIEW_TRANSFORM,
         "frameMs": frame_ms,
         "camera": {
@@ -424,8 +454,10 @@ def render_shot(studio: Studio, plan: ShotPlan, out_dir: str, samples: int) -> d
         result["fallbackReason"] = f"{spec['preset']} needs a multi-part model; the model has one mesh"
     if "animationFallback" in plan.notes:
         result["animationFallback"] = plan.notes["animationFallback"]
-    with open(os.path.join(shot_dir, "result.json"), "w", encoding="utf-8") as fh:
-        json.dump(result, fh, indent=1)
+    if technique != spec["technique"]:
+        result["fallbackTechnique"] = technique
+        result["fallbackTechniqueReason"] = "the product has no light of its own to switch on: one plate at full light"
+    write_json(os.path.join(shot_dir, "result.json"), result)
     return result
 
 
@@ -483,8 +515,7 @@ def main(job_path: str) -> int:
         },
         "set": {"environment": env.name, "reachM": round(reach, 4), "wallM": round(tallest, 4), "extended": extended},
     }
-    with open(os.path.join(out_dir, "result.json"), "w", encoding="utf-8") as fh:
-        json.dump(summary, fh, indent=1)
+    write_json(os.path.join(out_dir, "result.json"), summary)
     log(f"PHASE total ms={summary['totalMs']}")
     return 0
 

@@ -9,7 +9,7 @@ import {
 import type { PlanShot, ReelPlan } from "../contracts/plan.ts";
 import type { ProductSource } from "../contracts/product.ts";
 import { cacheKey } from "../util/cache.ts";
-import { plateMove, requiredOverscan } from "./moves.ts";
+import { plateMove, requiredOverscan, windowTravelX } from "./moves.ts";
 
 /*
  * ReelPlan → StudioJob (the JSON Blender receives). Built by code only: ids are copied from the validated plan,
@@ -47,13 +47,15 @@ export function studioRenderSize(
 /**
  * Presets whose real frames move slowly enough to be rendered at half the profile frame rate and motion-
  * interpolated to the reel fps (measured: 7.5 → 15 fps reconstruction of a slow turntable ≥ 25 dB SSIM, no visible
- * artefacts). Only in the FAST profile — QUALITY renders every frame at the profile rate.
+ * artefacts). QUALITY halves every sequence (30 → 15 fps, interpolated to the reel fps like FAST's 15 fps
+ * sequences): a frame costs ~20× a FAST one (4× the pixels, 5× the samples — est. ~200 s on 4 vCPU), so a
+ * 3 s shot at the full rate alone would be ~5 h of Blender.
  */
 const SLOW_SEQUENCES = new Set<ShotPreset>(["slow_turntable", "floating_product"]);
 
 export function sequenceRenderFps(preset: ShotPreset, profile: BlenderProfile): number {
   const fps = StudioProfileDefaults[profile].sequenceFps;
-  if (profile === "FAST" && SLOW_SEQUENCES.has(preset)) return Math.max(6, Math.round(fps / 2));
+  if (profile === "QUALITY" || SLOW_SEQUENCES.has(preset)) return Math.max(6, Math.round(fps / 2));
   return fps;
 }
 
@@ -65,6 +67,12 @@ export function plateOverscan(
   if (shot.technique === "sequence") return 1;
   const need = requiredOverscan(plateMove(shot.preset, shot.params, shot.technique));
   return Math.min(1.6, Math.max(StudioProfileDefaults[profile].overscan, Math.ceil(need * 100) / 100));
+}
+
+/** Sideways travel of a plate's move (composed-frame widths): Blender keeps that margin around the product. */
+export function plateTravelX(shot: Pick<PlanShot, "preset" | "params" | "technique">): number {
+  if (shot.technique === "sequence") return 0;
+  return windowTravelX(plateMove(shot.preset, shot.params, shot.technique));
 }
 
 /** PlanShot → StudioShotSpec. */
@@ -79,6 +87,7 @@ export function studioShotSpec(shot: PlanShot, profile: BlenderProfile): StudioS
     lighting: shot.lighting,
     renderFps: sequenceRenderFps(shot.preset, profile),
     overscan: plateOverscan(shot, profile),
+    travelX: plateTravelX(shot),
   };
 }
 
