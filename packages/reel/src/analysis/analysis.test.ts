@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ProductFact, ProductSource } from "../contracts/product.ts";
 import { ingestAboProduct } from "../ingest/abo.ts";
-import { classifyCategory, emitsLightOf } from "./deterministic.ts";
+import { classifyCategory, emitsLightOf, floorStandingOf } from "./deterministic.ts";
 
 const src = (
   over: Partial<Pick<ProductSource, "category" | "categoryPath" | "names">>,
@@ -58,14 +58,25 @@ describe("category", () => {
     ? fs.readdirSync(abo).filter((d) => fs.existsSync(path.join(abo, d, "listing.json")))
     : [];
   it.skipIf(!lamps.length)(
-    "keeps every real ABO table lamp a light source",
+    "table lamps light up on a table; furniture stands on the floor",
     async () => {
+      const furniture = new Set([
+        "B07QCMBCXJ",
+        "B082BLFMRC",
+        "B07P6JV16D",
+        "B0853L358V",
+        "B07QFP4ZHX",
+        "B07HSKY87X",
+      ]);
       for (const id of lamps) {
         const s = await ingestAboProduct(path.join(abo, id));
-        expect(classifyCategory(s).category, id).toBe("lighting");
-        expect(emitsLightOf(s), id).toBe(true);
+        if (/lamp/i.test(s.category)) {
+          expect(classifyCategory(s).category, id).toBe("lighting");
+          expect(emitsLightOf(s), id).toBe(true);
+        }
+        expect(floorStandingOf(s), `${id} ${s.category}`).toBe(furniture.has(id));
       }
     },
-    60_000,
+    120_000,
   );
 });

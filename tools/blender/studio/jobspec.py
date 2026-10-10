@@ -151,7 +151,7 @@ def validate_job(raw) -> dict:
     if raw["version"] != STUDIO_JOB_VERSION:
         _fail("job.version", f"expected {STUDIO_JOB_VERSION!r}")
     p = _obj(raw["product"], "job.product", {"modelPath", "modelSha", "format", "emitsLight"},
-             {"realHeightM", "emissiveHints"})
+             {"realHeightM", "emissiveHints", "floorStanding"})
     hints = p.get("emissiveHints", [])
     if not isinstance(hints, list) or len(hints) > 12:
         _fail("job.product.emissiveHints", "expected at most 12 strings")
@@ -164,6 +164,8 @@ def validate_job(raw) -> dict:
     }
     if "realHeightM" in p:
         product["realHeightM"] = _num(p["realHeightM"], "job.product.realHeightM", positive=True)
+    if "floorStanding" in p:
+        product["floorStanding"] = _bool(p["floorStanding"], "job.product.floorStanding")
     o = _obj(raw["output"], "job.output", {"dir", "width", "height"})
     c = _obj(raw["camera"], "job.camera", {"lensMm", "dof", "motionBlur"})
     dof = _obj(c["dof"], "job.camera.dof", {"enabled", "fStop"})

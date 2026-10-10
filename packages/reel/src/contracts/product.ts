@@ -133,6 +133,8 @@ export const ProductProfile = z.object({
     hasMovingParts: z.boolean(),
     hasScreen: z.boolean(),
     tall: z.boolean(),
+    /** stands on the floor (chairs, sofas, stools, tables, floor lamps): the studio sets it on a floor, not a table */
+    floorStanding: z.boolean().default(false),
   }),
   analyzer: z.object({ provider: z.string(), model: z.string(), version: z.string() }),
 });

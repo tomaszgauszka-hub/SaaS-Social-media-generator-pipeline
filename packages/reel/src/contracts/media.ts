@@ -58,6 +58,8 @@ export const StudioJob = z.object({
     /** real height of the product (m) when known — scales the scene so lenses / DOF behave physically */
     realHeightM: z.number().positive().optional(),
     emitsLight: z.boolean(),
+    /** set on the room floor instead of a table top (furniture) */
+    floorStanding: z.boolean().optional(),
     /** case-insensitive material/object name fragments that should glow when the light is on */
     emissiveHints: z.array(z.string().max(40)).max(12).default([]),
   }),

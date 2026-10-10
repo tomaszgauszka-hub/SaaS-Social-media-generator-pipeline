@@ -167,6 +167,8 @@ export interface BuildStudioJobOptions {
   modelSha?: string;
   /** from ProductProfile.traits.emitsLight (default: inferred from the ProductSource) */
   emitsLight?: boolean;
+  /** from ProductProfile.traits.floorStanding: furniture stands on the room floor */
+  floorStanding?: boolean;
   emissiveHints?: readonly string[];
   realHeightM?: number;
 }
@@ -210,6 +212,8 @@ export function buildStudioJob(
       format: model.format,
       ...(realHeightM ? { realHeightM } : {}),
       emitsLight: opts.emitsLight ?? inferEmitsLight(product),
+      // only when set: table-top products keep their existing studio cache keys
+      ...(opts.floorStanding ? { floorStanding: true } : {}),
       emissiveHints: [...(opts.emissiveHints ?? DEFAULT_EMISSIVE_HINTS)].slice(0, 12),
     },
     environment,

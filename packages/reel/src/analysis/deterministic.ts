@@ -15,7 +15,7 @@ import { decodeRaw } from "../util/raw.ts";
  * of the Gemini analyzer and good enough on its own for structured catalog data.
  */
 
-export const DETERMINISTIC_ANALYZER_VERSION = "deterministic-analyzer/2";
+export const DETERMINISTIC_ANALYZER_VERSION = "deterministic-analyzer/3";
 
 export function sourceHash(source: ProductSource): string {
   return sha256Hex(stableStringify(source)).slice(0, 24);
@@ -85,6 +85,20 @@ export function classifyCategory(
 
 export function categoryOf(source: Pick<ProductSource, "category" | "categoryPath" | "names">): CategoryKey {
   return classifyCategory(source).category;
+}
+
+const FLOOR_STANDING =
+  /\b(chairs?|armchairs?|sofas?|couch(es)?|sectionals?|loveseats?|(bar|counter)?stools?|barstools?|ottomans?|poufs?|benches|bench|(coffee|end|side|console|dining|accent) tables?|nightstands?|desks?|beds?|headboards?|cabinets?|dressers?|bookcases?|bookshel(f|ves)|shelving|rugs?|floor lamps?|divani|divano|canapés?|sillas?|sedie|chaises?|stühle|sessel|sofas?)\b/i;
+
+/**
+ * The product stands on the floor (furniture, floor lamps), so the studio sets it in a room on its floor — a chair
+ * on a table top reads as a toy. Decided like the category: the catalog structure first, then the names.
+ */
+export function floorStandingOf(source: Pick<ProductSource, "category" | "categoryPath" | "names">): boolean {
+  const structured = [source.category, ...(source.categoryPath ?? "").split("/").reverse()].filter(Boolean);
+  for (const s of structured) if (FLOOR_STANDING.test(s)) return true;
+  if (structured.some((s) => /\b(lamps?|lighting|planters?|vases?|decor)\b/i.test(s))) return false;
+  return FLOOR_STANDING.test(Object.values(source.names).join(" ").replace(LIGHT_ADJECTIVE, " "));
 }
 
 /**
@@ -293,6 +307,7 @@ export class DeterministicProductAnalyzer implements ProductAnalyzer {
       palette: palette.slice(0, 6),
       traits: {
         emitsLight,
+        floorStanding: floorStandingOf(source),
         hasMovingParts: category === "tools" || has(facts, /motor|rotat|spin/i),
         hasScreen: category === "electronics" && has(facts, /\b(screen|display|bildschirm|écran)\b/i),
         tall: Boolean(heightCm && widthCm && heightCm / widthCm > 1.3),

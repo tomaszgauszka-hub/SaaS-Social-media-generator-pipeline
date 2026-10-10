@@ -40,6 +40,8 @@ export const SHOT_CLIP_NAMESPACE = "shot-clip";
 export interface ProduceShotClipsOptions {
   /** ProductProfile.traits.emitsLight (default: inferred from the ProductSource) */
   emitsLight?: boolean;
+  /** ProductProfile.traits.floorStanding: furniture stands on the room floor */
+  floorStanding?: boolean;
   emissiveHints?: readonly string[];
   /** tests / previews only (fewer samples, smaller renders) — part of the cache key */
   overrides?: StudioOverrides;
@@ -185,6 +187,7 @@ export async function produceShotClips(
   const jobOpts = {
     modelSha,
     ...(opts.emitsLight !== undefined ? { emitsLight: opts.emitsLight } : {}),
+    ...(opts.floorStanding ? { floorStanding: true } : {}),
     ...(opts.emissiveHints ? { emissiveHints: opts.emissiveHints } : {}),
   };
 

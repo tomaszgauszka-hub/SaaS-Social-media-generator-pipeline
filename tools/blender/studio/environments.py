@@ -259,19 +259,23 @@ def _world(color: tuple[float, float, float, float], strength: float) -> None:
 # ------------------------------------------------------------------------------------------ sets ----------
 
 
-def build_environment(name: str, size: float, radius: float, reach: float, wall_reach: float) -> EnvSet:
+def build_environment(name: str, size: float, radius: float, reach: float, wall_reach: float,
+                      floor: bool = False) -> EnvSet:
     """`size` = product size S, `radius` = product footprint radius, `reach` = farthest camera distance from
-    the product of any shot, `wall_reach` = height a wall needs to fill every frame."""
+    the product of any shot, `wall_reach` = height a wall needs to fill every frame. `floor`: the product stands
+    on the floor (furniture) — no plinth, no table top, no table-top props."""
     if name in ("dark_premium", "bright_minimal", "soft_pastel"):
         r = max(7.0 * size, 1.4 * reach)
         h = max(10.0 * size, wall_reach)
         if name == "dark_premium":
             cove_mat = flat_material("Cove", "#141416", 0.8, specular=0.2)
             cove = cyclorama("Cyclorama", r, 1.8 * size, h, cove_mat)
+            _world(srgb("#050506"), 1.0)
+            if floor:
+                return EnvSet(name, None, 1.0, [cove])
             cove.location.z = -0.16 * size  # the plinth top is the product's floor (Z = 0)
             stone = flat_material("Plinth", "#0E0E10", 0.16, specular=0.6, coat=0.35)
             ped = plinth("Plinth", max(1.18 * radius, 0.3 * size), 0.16 * size, stone)
-            _world(srgb("#050506"), 1.0)
             return EnvSet(name, None, 1.0, [cove, ped])
         if name == "bright_minimal":
             cove_mat = flat_material("Cove", "#F1F0EC", 0.72, specular=0.35)
@@ -280,6 +284,9 @@ def build_environment(name: str, size: float, radius: float, reach: float, wall_
             return EnvSet(name, None, 0.8, [cove])
         cove_mat = flat_material("Cove", "#E8C7B8", 0.78, specular=0.35)
         cove = cyclorama("Cyclorama", r, 1.8 * size, h, cove_mat)
+        if floor:
+            _world(srgb("#FBEFE8"), 0.4)
+            return EnvSet(name, None, 0.9, [cove])
         cove.location.z = -0.2 * size
         sage = flat_material("Plinth", "#A9B9A2", 0.7, specular=0.3)
         ped = plinth("Plinth", max(1.25 * radius, 0.32 * size), 0.2 * size, sage)
@@ -304,14 +311,14 @@ def build_environment(name: str, size: float, radius: float, reach: float, wall_
         _world(srgb("#2A2E33"), 0.6)
         light_mult = 1.0
     elif name == "warm_living":
-        floor_z = -1.35 * size
+        floor_z = 0.0 if floor else -1.35 * size
         floor_mat = wood_material("Floor", "#5E3B22", "#8A5A36", size, planks=True)
         wall_mat = flat_material("Wall", "#E7E3DC", 0.85, specular=0.3, bump_scale=0.05 * size)
         side_mat = wall_mat
         _world(srgb("#FFF4E6"), 0.25)
         light_mult = 0.95
     elif name == "natural_daylight":
-        floor_z = -1.35 * size
+        floor_z = 0.0 if floor else -1.35 * size
         floor_mat = wood_material("Floor", "#B08A63", "#D2B48C", size, planks=True)
         wall_mat = flat_material("Wall", "#EEEDE9", 0.85, specular=0.3, bump_scale=0.05 * size)
         side_mat = wall_mat
@@ -335,7 +342,7 @@ def build_environment(name: str, size: float, radius: float, reach: float, wall_
         objs.append(plane("LeftWall", (depth, wall_h), (-side, (back + front) / 2, zc),
                           (math.pi / 2, 0, -math.pi / 2), side_mat))
 
-    if name in ("warm_living", "natural_daylight"):
+    if name in ("warm_living", "natural_daylight") and not floor:
         # the product stands on a sideboard / table top (Z = 0); the room floor is a table height below
         top_mat = (wood_material("TableTop", "#8E7259", "#B89C7E", size, planks=False, roughness=0.38) if name == "warm_living"
                    else flat_material("TableTop", "#E4DED4", 0.55, specular=0.4))

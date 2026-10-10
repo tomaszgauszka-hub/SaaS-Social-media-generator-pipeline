@@ -249,3 +249,22 @@ class SurfaceSampleTest(unittest.TestCase):
         self.assertLess(len(on_rod), 60)
         self.assertGreater(np.ptp(on_rod[:, 2]), 0.5)
         np.testing.assert_array_equal(pts, product_import.surface_samples(np.array(sq + rod, dtype=float), n=2000))
+
+
+@unittest.skipUnless(HAVE_BPY, "needs bpy (.tools/blender-venv)")
+class FloorStandingTest(unittest.TestCase):
+    def test_furniture_stands_on_the_room_floor_not_a_table(self):
+        import environments
+
+        for name in ("warm_living", "natural_daylight", "dark_premium", "soft_pastel"):
+            bpy.ops.wm.read_factory_settings(use_empty=True)
+            table = {o.name.split(".")[0] for o in environments.build_environment(name, 1.0, 0.4, 4.0, 6.0).objects}
+            bpy.ops.wm.read_factory_settings(use_empty=True)
+            env = environments.build_environment(name, 1.0, 0.4, 4.0, 6.0, floor=True)
+            names = {o.name.split(".")[0] for o in env.objects}
+            self.assertFalse({"TableTop", "TableBody", "Plinth", "PropDisc"} & names, name)
+            floor = next((o for o in env.objects if o.name.startswith("Floor")), None)
+            if floor is not None:
+                self.assertAlmostEqual(floor.location.z, 0.0, places=6)
+            if name == "warm_living":
+                self.assertIn("TableTop", table)

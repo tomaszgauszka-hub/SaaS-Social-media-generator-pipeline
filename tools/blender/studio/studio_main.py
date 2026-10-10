@@ -529,7 +529,8 @@ def main(job_path: str) -> int:
     reach, tallest, extended = set_extent(model, job, plans)
     log(f"PHASE plan ms={ms_since(t)} reach={reach:.3f} wall={tallest:.3f} extended={int(extended)}")
     t = time.monotonic()
-    env = environments.build_environment(job["environment"], model.size, model.radius, reach, tallest)
+    env = environments.build_environment(job["environment"], model.size, model.radius, reach, tallest,
+                                         floor=bool(job["product"].get("floorStanding", False)))
     studio = Studio(job, cfg, model, env)
     scene_ms = ms_since(t0)
     log(f"PHASE scene ms={scene_ms} environment={env.name}")
