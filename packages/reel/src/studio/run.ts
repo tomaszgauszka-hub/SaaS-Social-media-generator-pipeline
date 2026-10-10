@@ -34,6 +34,8 @@ export const StudioShotOutput = StudioShotResult.extend({
   /** the technique was not renderable (a relight of a product without a light): this one was rendered instead */
   fallbackTechnique: ShotTechnique.optional(),
   fallbackTechniqueReason: z.string().max(300).optional(),
+  /** a close-up of a thin part was framed on the product's widest band instead (why) */
+  macroFocus: z.string().max(300).optional(),
   overscan: z.number().min(1).max(1.6).optional(),
   bitDepth: z.union([z.literal(8), z.literal(16)]).optional(),
   viewTransform: z.string().optional(),

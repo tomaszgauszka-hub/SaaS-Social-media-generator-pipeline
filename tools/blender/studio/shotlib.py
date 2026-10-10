@@ -198,6 +198,17 @@ def focus_band(focus: str) -> tuple[float, float]:
     }[focus]
 
 
+def macro_focus(focus: str, widths: dict[str, float], product_width: float, min_share: float = 0.3) -> tuple[str, str | None]:
+    """A close-up of a part much narrower than the product (a thin lamp rod) is an abstract blur, not a detail:
+    frame the widest band instead. `widths` = horizontal extent of each focus band. Returns (focus, note)."""
+    if product_width <= 0 or widths.get(focus, 0.0) >= min_share * product_width:
+        return focus, None
+    best = max(("base", "top", "middle", "detail"), key=lambda f: widths.get(f, 0.0))
+    if widths.get(best, 0.0) < min_share * product_width:
+        return focus, None
+    return best, f"close-up of a thin {focus} band ({widths.get(focus, 0.0) / product_width:.0%} of the product width) framed on the {best} instead"
+
+
 @dataclass(frozen=True)
 class ShotState:
     # camera, relative to the composed camera

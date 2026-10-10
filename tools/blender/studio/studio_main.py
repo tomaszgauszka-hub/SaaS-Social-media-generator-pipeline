@@ -157,6 +157,14 @@ def has_own_light(model: product_import.ProductModel, job: dict) -> bool:
     return (job["product"]["emitsLight"] and model.bulb is not None) or bool(model.emissive)
 
 
+def _band_width(points, H: float, z0: float, z1: float) -> float:
+    """Horizontal extent (largest of the x / y spans) of the model points inside a height band."""
+    sel = points[(points[:, 2] >= z0 * H - 1e-9) & (points[:, 2] <= z1 * H + 1e-9)]
+    if len(sel) < 8:
+        return 0.0
+    return float(max(np.ptp(sel[:, 0]), np.ptp(sel[:, 1])))
+
+
 def plan_shot(model: product_import.ProductModel, job: dict, spec: dict, cfg: dict, scale_override) -> ShotPlan:
     preset, fallback = shotlib.resolve_preset(spec["preset"], len(model.parts))
     params = spec["params"]
@@ -176,7 +184,13 @@ def plan_shot(model: product_import.ProductModel, job: dict, spec: dict, cfg: di
     rest, notes = shotlib.plate_state(preset, params, spec["productAnimation"], **kw)
     angle = -float(params["angleDeg"])
     H = model.height
-    z0, z1 = shotlib.focus_band(comp.focus)
+    focus = comp.focus
+    if comp.fill > 1.0:
+        widths = {f: _band_width(model.points, H, *shotlib.focus_band(f)) for f in ("base", "middle", "top", "detail")}
+        focus, why = shotlib.macro_focus(focus, widths, _band_width(model.points, H, 0.0, 1.0))
+        if why:
+            notes["macroFocus"] = why
+    z0, z1 = shotlib.focus_band(focus)
     band = model.points[(model.points[:, 2] >= z0 * H - 1e-9) & (model.points[:, 2] <= z1 * H + 1e-9)]
     if len(band) < 8:
         band = model.points
@@ -454,6 +468,8 @@ def render_shot(studio: Studio, plan: ShotPlan, out_dir: str, samples: int) -> d
         result["fallbackReason"] = f"{spec['preset']} needs a multi-part model; the model has one mesh"
     if "animationFallback" in plan.notes:
         result["animationFallback"] = plan.notes["animationFallback"]
+    if "macroFocus" in plan.notes:
+        result["macroFocus"] = plan.notes["macroFocus"]
     if technique != spec["technique"]:
         result["fallbackTechnique"] = technique
         result["fallbackTechniqueReason"] = "the product has no light of its own to switch on: one plate at full light"

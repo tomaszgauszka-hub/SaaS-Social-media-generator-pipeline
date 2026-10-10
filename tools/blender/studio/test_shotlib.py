@@ -190,6 +190,16 @@ class CompositionTest(unittest.TestCase):
         self.assertEqual(shotlib.composition("macro_push", {"focus": "top"}).focus, "top")
         self.assertEqual(shotlib.composition("orbit", {}).focus, "whole")
 
+    def test_close_up_of_a_thin_part_frames_the_widest_band(self):
+        # marble cube base 0.2 m wide, thin rod 0.01 m, shade 0.25 m: a macro of the rod is a blur
+        widths = {"base": 0.20, "middle": 0.01, "top": 0.25, "detail": 0.2}
+        focus, note = shotlib.macro_focus("middle", widths, 0.25)
+        self.assertEqual(focus, "top")
+        self.assertIn("thin middle band", note)
+        self.assertEqual(shotlib.macro_focus("base", widths, 0.25), ("base", None))
+        # nothing wide enough anywhere: keep what the plan asked for
+        self.assertEqual(shotlib.macro_focus("middle", {"base": 0.01, "middle": 0.01}, 0.25), ("middle", None))
+
     def test_plan_can_move_the_product_down_for_a_text_panel(self):
         self.assertEqual(shotlib.composition("silhouette_reveal", {}).center_y, 0.5)
         self.assertEqual(shotlib.composition("silhouette_reveal", {"centerY": 0.565}).center_y, 0.565)
