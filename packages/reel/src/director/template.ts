@@ -239,15 +239,17 @@ const ROLE_CONCEPTS: Partial<Record<SalesRole, string[]>> = {
   DEMO: ["battery_included", "keyless_chuck", "easy_assembly", "materials_walnut_brass_fabric"],
 };
 
+/** The role's preferred unused concept; any unused one unless `strict` (role-specific only). */
 export function pickConcept(
   role: SalesRole,
   matched: readonly MatchedConcept[],
   used: Set<string>,
+  opts: { strict?: boolean } = {},
 ): MatchedConcept | undefined {
   const order = ROLE_CONCEPTS[role] ?? [];
   return (
     order.map((id) => matched.find((m) => m.concept.id === id)).find((m) => m && !used.has(m.concept.id)) ??
-    matched.find((m) => !used.has(m.concept.id))
+    (opts.strict ? undefined : matched.find((m) => !used.has(m.concept.id)))
   );
 }
 
@@ -306,6 +308,16 @@ export function templateDecision(input: DirectorInput): DirectorDecision {
   const hook = hookLine(strategy, input.locale, hookCtx);
   const used = new Set<string>();
   const generic = materialsLine(facts, lang);
+  // the proof close-up needs a part the camera can show (a concept with a focus): reserve it first, so the
+  // benefit line does not use up the product's only visual detail (a marble lamp's marble cube)
+  let reserved = beats.some((b) => b.role === "PROOF")
+    ? pickConcept(
+        "PROOF",
+        matched.filter((m) => m.concept.focus && m.concept.focus !== "whole"),
+        used,
+      )
+    : undefined;
+  if (reserved) used.add(reserved.concept.id);
 
   const voice: DirectorDecision["voiceover"]["lines"] = [];
   const shots: DirectorShot[] = beats.map((b, i) => {
@@ -323,7 +335,12 @@ export function templateDecision(input: DirectorInput): DirectorDecision {
         break;
       case "BENEFIT":
       case "DEMO": {
-        const m = pickConcept(b.role, matched, used);
+        // a role-specific concept, else the proof's own detail (the voice names what the close-up will show),
+        // else the materials line, else whatever the facts still support
+        const m =
+          pickConcept(b.role, matched, used, { strict: true }) ??
+          reserved ??
+          (generic ? undefined : pickConcept(b.role, matched, used));
         if (m) {
           used.add(m.concept.id);
           voice.push({
@@ -336,7 +353,8 @@ export function templateDecision(input: DirectorInput): DirectorDecision {
       }
       case "PROOF":
       case "VALUE": {
-        const m = pickConcept(b.role, matched, used);
+        const m = b.role === "PROOF" && reserved ? reserved : pickConcept(b.role, matched, used);
+        if (b.role === "PROOF") reserved = undefined;
         if (m) {
           used.add(m.concept.id);
           shot.overlay = { text: m.concept.short[lang], factIds: factIdsFor(m.factIds, facts, input.locale) };
