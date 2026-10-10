@@ -171,10 +171,10 @@ Pure argument builders (`composer/master.ts`, `audio.ts`, `subtitles.ts`) + a no
 - **Master pass** — clips scaled / cropped to 1080×1920 @ plan fps; a transition into shot _k_ starts exactly at
   the planned cut and the outgoing shot holds its last frame for the transition length (`tpad`), so
   `xfade offset = start(k)` and the total is exactly `plan.durationMs` (frame-quantised: 12 s → 360 frames). Cuts
-  are `concat`. The brand logo is overlaid outside every platform UI zone with an alpha fade. Output: H.264 CRF 14,
-  no audio. The master is cached by a **visual hash** (clip file hashes + visual plan fields + logo + composer
-  version — never copy, voice or captions), so every locale and every QA retry that does not touch the visuals
-  reuses it.
+  are `concat`. Output: H.264 CRF 14, no audio, **no brand and no platform**: the master is cached by a **visual
+  hash** (clip file hashes + shot timing / transitions + resolution / fps + composer version — never copy, voice,
+  captions, logo or platform), so every locale, every platform, every copy-mode A/B arm and every QA retry that
+  does not touch the visuals reuses it.
 - **Localized pass** — music (trim, fades, gain) with a **deterministic ducking envelope** computed from the
   voice's word timings (`gain = 10^(−depth·s(t)/20)`, trapezoid attack before each speech region, release after;
   the music dips _before_ the first syllable instead of reacting to it), voice on the reel timeline, SFX
@@ -182,8 +182,13 @@ Pure argument builders (`composer/master.ts`, `audio.ts`, `subtitles.ts`) + a no
   target (platform −14 LUFS; true peak mastered 1.5 dB under the delivery ceiling for AAC overshoot). Video:
   libass captions (word highlight, phrase pop, karaoke fill with `\kf` per word, minimal lower) and text
   elements (hook, overlays, CTA headline, CTA button with a pulse, disclosure) on rounded panels, fonts loaded
-  from the brand's files (`fontsdir`), every string sanitised for ASS; H.264 + AAC 48 kHz 192 kbps,
-  `+faststart`, poster frame from the CTA.
+  from the brand's files (`fontsdir`), every string sanitised for ASS; the brand logo per platform (outside that
+  platform's UI zones, alpha fade); H.264 + AAC 48 kHz 192 kbps, `+faststart`, poster frame from the CTA.
+  Encode: `veryfast` / CRF 16 for FAST tiers (measured on a 12 s 1080×1920 master: SSIM 0.9958 against the
+  master vs. 0.9957 for `medium` / CRF 18, 6.0 s instead of 15.3 s), `medium` / CRF 16 for QUALITY.
+- **Captions never repeat a panel**: phrases of the spoken hook under the hook headline and of the spoken CTA
+  under the CTA panel ("Link znajdziesz w bio" under "Link w bio") are dropped — only when most of the phrase lies
+  inside both the panel's window and its own voice segment.
 - Measured on synthetic inputs (5 s reel): master pass ≈ 2 s, localized pass ≈ 3 s per locale; ducking verified
   numerically (the 150 Hz music bed is 8–12 dB lower inside speech), loudness within ±1 LU of target.
 
@@ -204,6 +209,33 @@ Fix codes drive `planRetry` (no model): `reframe:<shot>:±fill`, `reposition_cap
 taken from the previous shot) and `renormalize` (more true-peak headroom). Only what changed is re-rendered
 (Blender shot cache, master cache).
 
+## Return on cost
+
+The factory is built to make the **marginal reel** almost free, because one product needs many reels (languages,
+platforms, hooks) before one of them sells:
+
+- **One master, many reels.** Blender renders once per shot spec (cached across jobs), the master once per visual
+  hash. A job with `--platforms tiktok,instagram_reels,youtube_shorts` re-uses, per locale, the master, the music,
+  the SFX, the voice and the loudness-normalised mix; only captions / text / logo and the encode are per platform.
+  The CTA window is compiled for the longest CTA minimum of all delivered platforms.
+- **Copy-mode A/B** (`--ab visual_surprise,problem_hook`, default `--ab-mode copy`): arm B is arm A's plan with
+  only the hook slots re-written (`rehookPlan`) — same shots, master, music, SFX — and only those slots are
+  transcreated and merged into arm A's localized copies, so the arms differ in the hook alone (a clean test) and
+  arm B costs one localized pass per locale × platform. `--ab-mode full` directs a new plan per arm.
+- **Marginal vs. shared cost.** Every cost entry carries a scope: `master` (job: analysis, retrieval),
+  `<arm>:master` (director, studio, master, music, SFX, transcreation), `<arm>:<locale>:voice` and
+  `<arm>:<locale>:<platform>` (compose, QA). A variant's manifest (`cost`, `totalApiCostUsd`, `timings`,
+  `renderTimeMs`) holds only its own scopes — the marginal cost of that reel; `sharedApiCostUsd` names the work it
+  shares and is never summed. The job record holds the total.
+- **Unit economics** per job: API spend + host time × `REEL_COMPUTE_USD_PER_HOUR`, cost per reel and the sales
+  needed to pay the job back (`--commission-usd` / `--commission-rate`). Measured on the ABO lamp (ECONOMY, 3
+  locales × 2 platforms × 2 hooks = 12 reels): $0 API, 5.6 min host ≈ $0.014 → **$0.0012 per reel**, paid back by
+  one sale at a $3 commission.
+- **Budget across retries.** A worker retry of an unfinished job continues on the budget its earlier attempts
+  left (the store returns the spend already recorded); a re-run of a DONE job is a new order with a fresh budget.
+- **Outcomes.** `pnpm reel:outcome --job … --variant A --locale pl-PL --views … --ctr …` stores real results per
+  variant (ReelOutcomeSnapshot + hook memory) — the only input the hook ranking ever learns from.
+
 ## Mass production
 
 Jobs run through the existing DB-outbox job system: `pnpm reel … --enqueue` (or `enqueueReelProduction()`)
@@ -215,6 +247,10 @@ budget gates, and content-addressed caches for profiles, renders, master videos,
 translations. Variants of the same product reuse the master video and every cached render. Results land in
 `ReelJobRecord` / `ReelVariant` (plan, manifest and feature columns for later conversion analysis) and the hook
 memory.
+
+Catalog production: `pnpm reel:batch --node "Table Lamps" --limit 10 [--run [--no-db]] [--dry-run]` discovers ABO
+products that ship a real 3D model, fetches them and enqueues (or runs) one job per product with deterministic
+job ids.
 
 ## Security
 
