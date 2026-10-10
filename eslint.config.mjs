@@ -14,6 +14,7 @@ export default defineConfig(
       "**/coverage/**",
       "**/generated/**",
       "**/.data/**",
+      "**/.tools/**",
       "**/next-env.d.ts",
     ],
   },
