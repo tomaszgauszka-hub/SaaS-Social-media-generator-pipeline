@@ -45,6 +45,7 @@ export interface Concept {
 
 export const CONCEPTS: Concept[] = [
   {
+    // the line ends on the stem: the proof shot after it is the macro of the base and the brass stem
     id: "materials_walnut_brass_fabric",
     en: "Walnut base, brass stem and fabric shade",
     role: "selling",
@@ -54,12 +55,12 @@ export const CONCEPTS: Concept[] = [
       /(fabric|stoff|tela|tissu|tessuto)/i,
     ],
     line: {
-      pl: "Orzechowa podstawa, mosiężny trzon i abażur z tkaniny.",
-      en: "A walnut base, a brass stem and a fabric shade.",
-      de: "Sockel aus Walnuss, Stange aus Messing, Schirm aus Stoff.",
-      fr: "Un socle en noyer, une tige en laiton et un abat-jour en tissu.",
-      es: "Base de nogal, poste de latón y pantalla de tela.",
-      it: "Base in noce, stelo in ottone e paralume in tessuto.",
+      pl: "Abażur z tkaniny, orzechowa podstawa i mosiężny trzon.",
+      en: "A fabric shade, a walnut base and a brass stem.",
+      de: "Schirm aus Stoff, Sockel aus Walnuss, Stange aus Messing.",
+      fr: "Un abat-jour en tissu, un socle en noyer et une tige en laiton.",
+      es: "Pantalla de tela, base de nogal y poste de latón.",
+      it: "Paralume in tessuto, base in noce e stelo in ottone.",
     },
     short: {
       pl: "Orzech · mosiądz · tkanina",

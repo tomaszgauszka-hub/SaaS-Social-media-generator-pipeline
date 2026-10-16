@@ -6,6 +6,7 @@
  *   options:  --job-id <id>  --max-cost 0.20  --ab problem_hook,visual_surprise  --no-db  --allow-generative-video
  *             --enqueue   create a `reel.produce` outbox job instead of producing in this process (worker runs it)
  *             --platforms tiktok,instagram_reels,youtube_shorts   one render, every platform (first = primary)
+ *             --blender QUALITY   full-quality studio render on any tier (local CPU time only, no API cost)
  *             --ab-mode copy|full   A/B arms reuse the master ("copy", default) or get their own shots ("full")
  *             --commission-rate 0.04 | --commission-usd 2.5   payback estimate (break-even sales)
  *
@@ -71,6 +72,7 @@ async function main(): Promise<void> {
     locales,
     targetDurationS: Number(arg("duration") ?? 12),
     tier: (arg("tier") ?? "STANDARD") as "STANDARD",
+    ...(arg("blender") ? { blenderProfile: arg("blender") as "QUALITY" } : {}),
     ...(maxCost ? { maxApiCost: Number(maxCost) } : {}),
     ...(ab ? { abHooks: ab.split(",") as never } : {}),
     allowGenerativeVideo: flag("allow-generative-video"),

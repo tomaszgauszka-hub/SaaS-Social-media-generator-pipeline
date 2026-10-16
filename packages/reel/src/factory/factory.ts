@@ -220,7 +220,10 @@ export class ReelFactory {
     const started = Date.now();
     const job = ReelJob.parse(input.job);
     const { source, brand } = input;
-    const tier = TIER_PROFILES[job.tier];
+    const tier = {
+      ...TIER_PROFILES[job.tier],
+      ...(job.blenderProfile ? { blender: job.blenderProfile } : {}),
+    };
     const budgetUsd = job.maxApiCost ?? tier.defaultMaxApiCostUsd;
     // a worker retry of an unfinished job continues on the budget its earlier attempts left
     const priorUsd = (await this.deps.store.jobStarted(job, budgetUsd))?.priorApiCostUsd ?? 0;

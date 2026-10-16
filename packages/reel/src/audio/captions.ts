@@ -144,6 +144,23 @@ export function groupPhrases(
       prev.pop();
     }
   }
+  // a sentence split mid-phrase reads badly ("Wieczór w zupełnie" | "nowym świetle"): neighbouring phrases of one
+  // sentence are re-split so a weak word (preposition, conjunction) opens the next phrase and never ends one
+  const score = (all: readonly Tok[], k: number) => (isWeak(all[k]!) ? 2 : 0) - (isWeak(all[k - 1]!) ? 3 : 0);
+  for (let i = 1; i < phrases.length; i++) {
+    const a = phrases[i - 1]!;
+    const b = phrases[i]!;
+    const all = [...a, ...b];
+    if (!a.length || !b.length || all.slice(0, -1).some((t) => t.sentenceEnd || t.clauseEnd)) continue;
+    if (b[0]!.word.startMs - a[a.length - 1]!.word.endMs > pause) continue;
+    let best = a.length;
+    for (let k = 1; k < all.length; k++)
+      if (score(all, k) > score(all, best) && fits(all.slice(0, k)) && fits(all.slice(k))) best = k;
+    if (best !== a.length) {
+      phrases[i - 1] = all.slice(0, best);
+      phrases[i] = all.slice(best);
+    }
+  }
   return phrases.filter((p) => p.length);
 }
 

@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { Capability, HookStrategy, LocaleTag, PlatformId, QualityTier, SafeId } from "./ids.ts";
+import {
+  BlenderProfile,
+  Capability,
+  HookStrategy,
+  LocaleTag,
+  PlatformId,
+  QualityTier,
+  SafeId,
+} from "./ids.ts";
 
 /** One production order: a product → a sales reel (+ localized and A/B variants). */
 export const ReelJob = z.object({
@@ -16,6 +24,8 @@ export const ReelJob = z.object({
   tier: QualityTier.default("STANDARD"),
   /** hard API budget for the whole job (all variants), USD; default comes from the tier */
   maxApiCost: z.number().min(0).max(50).optional(),
+  /** studio render profile instead of the tier's (e.g. a full-quality local render on the free tier) */
+  blenderProfile: BlenderProfile.optional(),
   objective: z.enum(["conversion", "consideration", "awareness"]).default("conversion"),
   /** A/B: one variant per hook strategy (variant A = director's choice when omitted) */
   abHooks: z.array(HookStrategy).max(4).default([]),

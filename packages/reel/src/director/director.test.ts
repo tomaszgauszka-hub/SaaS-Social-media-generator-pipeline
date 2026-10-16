@@ -191,10 +191,10 @@ describe.skipIf(!hasLamp)("director on the real lamp (ABO B075X2FZSM)", () => {
     const all: LocaleCopy[] = [plan.copy, ...copies];
     const texts = all.map((c) => Object.fromEntries(Object.entries(c.slots).map(([k, v]) => [k, v.text])));
     expect(texts[0]!["voice.2.materials_walnut_brass_fabric"]).toBe(
-      "Orzechowa podstawa, mosiężny trzon i abażur z tkaniny.",
+      "Abażur z tkaniny, orzechowa podstawa i mosiężny trzon.",
     );
     expect(texts[2]!["voice.2.materials_walnut_brass_fabric"]).toBe(
-      "Sockel aus Walnuss, Stange aus Messing, Schirm aus Stoff.",
+      "Schirm aus Stoff, Sockel aus Walnuss, Stange aus Messing.",
     );
     expect(texts[2]!.disclosure).toBe("Werbung · Affiliate-Link");
     expect(Object.keys(texts[1]!)).toEqual(Object.keys(texts[0]!));

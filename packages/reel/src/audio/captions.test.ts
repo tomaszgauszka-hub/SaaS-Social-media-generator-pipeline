@@ -57,4 +57,16 @@ describe("caption phrases", () => {
       "Jetzt kaufen",
     ]);
   });
+
+  it("opens a phrase with a preposition or conjunction instead of splitting mid-phrase", () => {
+    expect(phrases("Wieczór w zupełnie nowym świetle.", "pl-PL")).toEqual([
+      "Wieczór",
+      "w zupełnie nowym świetle",
+    ]);
+    expect(phrases("Abażur z tkaniny, orzechowa podstawa i mosiężny trzon.", "pl-PL")).toEqual([
+      "Abażur z tkaniny",
+      "orzechowa podstawa",
+      "i mosiężny trzon",
+    ]);
+  });
 });
