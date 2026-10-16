@@ -113,6 +113,8 @@ class CurvesTest(unittest.TestCase):
         self.assertEqual(s.frame_count(0.5, 24), 12)
         self.assertEqual(s.render_size({"quality": "preview", "resolution": [1080, 1920]}), (540, 960))
         self.assertEqual(s.render_size({"quality": "production", "resolution": [1080, 1920]}), (1080, 1920))
+        self.assertEqual(s.render_fps({"quality": "preview", "fps": 30}), 15)
+        self.assertEqual(s.render_fps({"quality": "production", "fps": 30}), 30)
 
     def test_explode_goes_out_and_back(self):
         self.assertEqual(s.explode_progress(0.0), 0.0)

@@ -79,7 +79,7 @@ def configure(scene, job: dict, n_frames: int) -> dict:
     q = spec_mod.QUALITY[job["quality"]]
     scene.render.resolution_x, scene.render.resolution_y = w, h
     scene.render.resolution_percentage = 100
-    scene.render.fps = job["fps"]
+    scene.render.fps = spec_mod.render_fps(job)
     scene.frame_start, scene.frame_end = 1, n_frames
     device = {"device": "CPU", "backend": "NONE", "devices": []}
     if job["renderer"] == "EEVEE":
@@ -100,8 +100,8 @@ def configure(scene, job: dict, n_frames: int) -> dict:
         cy.use_denoising = q["denoise"]
         cy.denoiser = "OPENIMAGEDENOISE"
         cy.max_bounces = q["bounces"]
-        cy.diffuse_bounces = min(4, q["bounces"])
-        cy.glossy_bounces = min(6, q["bounces"])
+        cy.diffuse_bounces = min(3, q["bounces"])
+        cy.glossy_bounces = min(4, q["bounces"])
         cy.transmission_bounces = q["bounces"]
         cy.transparent_max_bounces = 12
         cy.caustics_reflective = False
@@ -297,7 +297,7 @@ def run(job: dict) -> dict:
     version = compat.require_supported()
     bpy.context.preferences.edit.keyframe_new_interpolation_type = "LINEAR"
     scene = bpy.context.scene
-    n = spec_mod.frame_count(job["durationSec"], job["fps"])
+    n = spec_mod.frame_count(job["durationSec"], spec_mod.render_fps(job))
     device = configure(scene, job, n)
     warnings: list[str] = []
     if device.get("fallback"):
@@ -381,7 +381,7 @@ def run(job: dict) -> dict:
         if a.kind not in prod.actions:
             raise SceneJobError(f"action {a.kind} is not supported by this product "
                                 f"(supported: {', '.join(sorted(prod.actions)) or 'none'})")
-    fps = job["fps"]
+    fps = spec_mod.render_fps(job)
     # anchors in the local space of what carries them (a part's handle, else the product pivot), at rest
     bpy.context.view_layer.update()
     anchors = {}
@@ -477,7 +477,7 @@ def run(job: dict) -> dict:
                     "renderer": scene.render.engine},
         "device": device,
         "frames": {"dir": "frames", "pattern": "f_%04d.png", "count": len(frame_ms), "width": w, "height": h,
-                   "fps": fps, "alpha": job["outputs"]["alpha"]},
+                   "fps": fps, "targetFps": job["fps"], "alpha": job["outputs"]["alpha"]},
         "product": {"kind": prod.kind, "name": prod.name, "heightM": round(prod.height, 5),
                     "radiusM": round(prod.radius, 5), "parts": parts, "actions": sorted(prod.actions),
                     "generatorVersion": prod.generator_version, "geometryHash": geometry_hash,

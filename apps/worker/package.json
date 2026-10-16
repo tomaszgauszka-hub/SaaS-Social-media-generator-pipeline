@@ -13,7 +13,9 @@
     "reel": "tsx src/cli/reel.ts",
     "reel:fetch-abo": "tsx src/cli/fetch-abo.ts",
     "reel:outcome": "tsx src/cli/reel-outcome.ts",
-    "reel:batch": "tsx src/cli/reel-batch.ts"
+    "reel:batch": "tsx src/cli/reel-batch.ts",
+    "render3d:demo": "tsx src/cli/render3d-demo.ts",
+    "render3d:reel": "tsx src/cli/render3d-reel.ts"
   },
   "dependencies": {
     "@cre/config": "workspace:*",

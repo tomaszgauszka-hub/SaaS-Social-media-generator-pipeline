@@ -1,0 +1,30 @@
+{
+  "locale": "pl-PL",
+  "market": "PL",
+  "strings": {
+    "s01.hook": "Każdy parametr tej *wiertarki 20V* w skrócie",
+    "s02.eyebrow": "Parametry w pigułce",
+    "s02.name": "Zestaw wiertarko-wkrętarki 20V",
+    "s02.tagline": "2 biegi · 21 nastaw sprzęgła · światło LED",
+    "s03.title": "Uchwyt *13 mm* bez klucza — szybka wymiana",
+    "s04.unit": "Nm",
+    "s04.label": "Maks. moment obrotowy",
+    "s05.title": "*21* nastaw sprzęgła + tryb wiercenia",
+    "s06.text": "Wkręca wkręty *na płasko* w drewno",
+    "s07.label1": "Napięcie",
+    "s07.value1": "20 V",
+    "s07.label2": "Uchwyt",
+    "s07.value2": "13 mm, bezkluczykowy",
+    "s07.label3": "Prędkości",
+    "s07.value3": "0–450/0–1700 obr/min",
+    "s07.label4": "Sprzęgło",
+    "s07.value4": "21 + wiercenie",
+    "s07.label5": "Waga",
+    "s07.value5": "1,4 kg",
+    "s07.title": "Liczby",
+    "s08.headline": "Zawartość zestawu i cena w linku",
+    "s08.sub": "Kreacja demo — brak aktywnej oferty",
+    "s08.button": "Zobacz zestaw",
+    "global.disclosure": "Reklama · link afiliacyjny (demo)"
+  }
+}

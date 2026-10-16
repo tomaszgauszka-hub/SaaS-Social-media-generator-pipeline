@@ -90,10 +90,11 @@ FIDELITY = ("VERIFIED_MANUFACTURER", "TECHNICAL_RECONSTRUCTION", "APPROXIMATE_VI
 #: product's structure is its own by construction (and the clip is DEMO_ONLY)
 STRUCTURE_OK = ("VERIFIED_MANUFACTURER", "TECHNICAL_RECONSTRUCTION", "FICTIONAL_DEMO")
 
-#: render quality profiles: (resolution scale, samples, adaptive threshold, max bounces, frame step)
+#: render quality profiles. A preview renders half size at 15 fps (the encoder interpolates to the clip fps with
+#: motion compensation, as the product studio's FAST profile does); production renders every frame at full size.
 QUALITY = {
-    "preview": {"scale": 0.5, "samples": 24, "threshold": 0.05, "bounces": 6, "denoise": True},
-    "production": {"scale": 1.0, "samples": 96, "threshold": 0.012, "bounces": 10, "denoise": True},
+    "preview": {"scale": 0.5, "samples": 16, "threshold": 0.04, "bounces": 4, "denoise": True, "renderFps": 15},
+    "production": {"scale": 1.0, "samples": 64, "threshold": 0.015, "bounces": 8, "denoise": True, "renderFps": None},
 }
 
 HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -321,6 +322,12 @@ def _product(p: dict) -> dict:
 def frame_count(duration_sec: float, fps: int) -> int:
     """Frames of a clip: ⌈duration·fps⌉ (at least 2)."""
     return max(2, int(math.ceil(duration_sec * fps - 1e-9)))
+
+
+def render_fps(job: dict) -> int:
+    """Frames per second actually rendered (≤ the clip fps; the encoder interpolates the rest)."""
+    cap = QUALITY[job["quality"]]["renderFps"]
+    return min(job["fps"], cap) if cap else job["fps"]
 
 
 def render_size(job: dict) -> tuple[int, int]:

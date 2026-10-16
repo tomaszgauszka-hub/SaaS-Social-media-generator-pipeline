@@ -89,7 +89,7 @@ export function timingFromAsset(a: Asset3D): TimingSample | null {
   if (!t || a.assetType !== "RENDER_CLIP" || !a.resolution || !t.perFrameMsMedian || t.cacheHit) return null;
   const engine = t.engine === "unreal" ? "unreal" : t.engine === "blender" ? "blender" : null;
   if (!engine || !a.quality) return null;
-  const samples = a.quality === "preview" ? 24 : 96;
+  const samples = a.quality === "preview" ? 16 : 64;
   const mp = (a.resolution[0] * a.resolution[1]) / 1e6;
   const unitMs = engine === "blender" ? t.perFrameMsMedian / (mp * samples) : t.perFrameMsMedian;
   return { engine, device: t.device === "GPU" ? "GPU" : "CPU", quality: a.quality, unitMs };

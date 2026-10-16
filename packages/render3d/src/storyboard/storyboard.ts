@@ -3,6 +3,7 @@ import {
   FRAME_HEIGHT,
   FRAME_WIDTH,
   type MediaRef,
+  type Overlay,
   type VisualBeat,
   type VisualBeatType,
 } from "@cre/creative";
@@ -50,19 +51,62 @@ export interface PlanOptions {
   only?: VisualBeatType[];
 }
 
-/** Where the product can sit given the beat's text boxes: below top text, above bottom text. */
-export function textAwareCenterY(beat: VisualBeat): number {
-  const boxes = beat.text.map((t) => t.box).filter(Boolean);
-  if (!boxes.length) return 0.5;
+/** Overlays drawn in their own boxes (panels, lists, counters): the product must stay clear of them too. */
+const BOXED_OVERLAYS = new Set(["panel", "spec_list", "counter", "badge", "checklist", "steps", "timer"]);
+/** Overlays tied to the geometry of the media they were drawn for (their points are not the 3D clip's). */
+const GEOMETRY_OVERLAYS = new Set(["highlight", "particles", "light_sweep", "measure", "arrow", "slider"]);
+
+/** Text boxes + boxed overlays of a beat (frame px). */
+export function occupiedBoxes(beat: VisualBeat): { y: number; h: number }[] {
+  const boxes: { y: number; h: number }[] = beat.text.map((t) => t.box);
+  for (const o of beat.overlays)
+    if (BOXED_OVERLAYS.has(o.kind) && "box" in o && o.box) boxes.push(o.box);
+  return boxes;
+}
+
+/**
+ * Where the product sits so the beat's text and panels stay clear: the centre of the largest free vertical band
+ * (centerY) and how much of the frame height it may fill.
+ */
+export function textAwareFraming(beat: VisualBeat, defaultFill: number): { centerY: number; fill?: number } {
+  const boxes = occupiedBoxes(beat);
+  if (!boxes.length) return { centerY: 0.5 };
   const top = boxes
     .filter((b) => b.y + b.h / 2 < FRAME_HEIGHT / 2)
     .reduce((m, b) => Math.max(m, b.y + b.h), 0);
   const bottom = boxes
     .filter((b) => b.y + b.h / 2 >= FRAME_HEIGHT / 2)
     .reduce((m, b) => Math.min(m, b.y), FRAME_HEIGHT);
-  const free = (top + bottom) / 2 / FRAME_HEIGHT;
-  return Math.min(0.66, Math.max(0.36, free));
+  const centerY = Math.min(0.66, Math.max(0.36, (top + bottom) / 2 / FRAME_HEIGHT));
+  const room = (0.86 * Math.max(0, bottom - top)) / FRAME_HEIGHT;
+  const fill = Math.max(0.25, Math.min(defaultFill, room));
+  return fill < defaultFill ? { centerY, fill: Math.round(fill * 100) / 100 } : { centerY };
 }
+
+/** Legacy helper: centre height only. */
+export function textAwareCenterY(beat: VisualBeat): number {
+  return textAwareFraming(beat, 1).centerY;
+}
+
+/** 2D demo-illustration anchor names → parts of the 3D models (same product, other drawing). */
+export const ANCHOR_ALIASES: Record<string, string> = {
+  gear: "gear_selector",
+  gauge: "charge_gauge",
+  handle: "housing",
+  vents: "housing",
+  base: "battery",
+  spf: "label",
+  tube: "body",
+};
+
+const DEFAULT_FILL: Partial<Record<MaterialType3D, number>> = {
+  "3D_PRODUCT_HERO": 0.6,
+  "3D_TURNTABLE": 0.58,
+  "3D_EXPLODED_VIEW": 0.66,
+  "3D_ASSEMBLY": 0.42,
+  "3D_LIFESTYLE": 0.46,
+  "3D_TECHNICAL": 0.74,
+};
 
 export function plan3dRequests(
   sb: CreativeStoryboard,
@@ -71,6 +115,7 @@ export function plan3dRequests(
 ): ClipRequest[] {
   const out: ClipRequest[] = [];
   let macroIndex = 0;
+  const partNames = new Set(product.parts.map((p) => p.name));
   const focusParts = product.parts.filter(
     (p) => !p.internal && (p.role === "detail" || p.role === "control"),
   );
@@ -84,7 +129,14 @@ export function plan3dRequests(
       20,
       Math.max(1, Math.round(((beat.asset3d?.durationMs ?? beat.durationMs) + 300) / 100) / 10),
     );
-    let focus = beat.asset3d?.focus;
+    // macro focus: the beat's own focus anchor (mapped onto the model's parts), else the next detail part
+    const primaryFocus = beat.media.find((m) => m.slot === "primary")?.focus;
+    const mapped = primaryFocus
+      ? partNames.has(primaryFocus)
+        ? primaryFocus
+        : ANCHOR_ALIASES[primaryFocus]
+      : undefined;
+    let focus = beat.asset3d?.focus ?? (mapped && partNames.has(mapped) ? mapped : undefined);
     if (!focus && mt === "3D_MACRO" && focusParts.length)
       focus = focusParts[macroIndex++ % focusParts.length]!.name;
     const recipe: Recipe3DInput = {
@@ -93,12 +145,11 @@ export function plan3dRequests(
       fps: sb.format.fps,
       resolution: opts.resolution ?? [sb.format.width, sb.format.height],
       quality: opts.quality ?? "preview",
-      framing: { centerY: textAwareCenterY(beat) },
-      ...(focus ? { focus } : {}),
+      framing: textAwareFraming(beat, DEFAULT_FILL[mt] ?? 0.6),
+      ...(focus && mt === "3D_MACRO" ? { focus } : {}),
       ...(mt === "3D_LIFESTYLE" && opts.environment
         ? { environment: { preset: opts.environment }, background: { preset: "environment" } }
         : {}),
-      ...(mt === "3D_TECHNICAL" ? {} : {}),
     };
     out.push({ beatId: beat.id, materialType: mt, recipe });
   }
@@ -166,7 +217,29 @@ export function midAnchors(
   return out;
 }
 
-/** The storyboard with each placed beat showing its 3D clip full frame. Text, overlays and audio unchanged. */
+/** Name of the media anchor closest to a canvas point (the anchor a callout was drawn for). */
+export function nearestAnchor(
+  ref: Pick<MediaRef, "anchors">,
+  box: { x: number; y: number; w: number; h: number },
+  p: { x: number; y: number },
+): string | null {
+  let best: string | null = null;
+  let dist = Infinity;
+  for (const [name, a] of Object.entries(ref.anchors)) {
+    const d = Math.hypot(box.x + a.x * box.w - p.x, box.y + a.y * box.h - p.y);
+    if (d < dist) {
+      dist = d;
+      best = name;
+    }
+  }
+  return dist <= 0.12 * Math.max(box.w, box.h) ? best : null;
+}
+
+/**
+ * The storyboard with each placed beat showing its 3D clip full frame. Text slots, boxed overlays (panels, lists,
+ * counters, badges), audio and the CTA are unchanged; overlays bound to the old media's geometry are remapped or
+ * dropped.
+ */
 export function apply3dClips(sb: CreativeStoryboard, clips: readonly PlacedClip[]): CreativeStoryboard {
   const byBeat = new Map(clips.map((c) => [c.beatId, c]));
   const media = [...sb.media];
@@ -176,6 +249,18 @@ export function apply3dClips(sb: CreativeStoryboard, clips: readonly PlacedClip[
     const ref = clipMediaRef(clip);
     if (!media.some((m) => m.id === ref.id)) media.push(ref);
     const others = beat.media.filter((m) => m.slot !== "primary" && m.slot !== "background");
+    // overlays drawn for the old media's geometry do not match the clip: callouts are moved to the clip's anchor
+    // of the same part (when the clip tracks it), the other geometry-bound overlays are dropped
+    const oldPrimary = beat.media.find((m) => m.slot === "primary");
+    const oldRef = oldPrimary ? sb.media.find((m) => m.id === oldPrimary.assetId) : undefined;
+    const overlays = beat.overlays.flatMap((o): Overlay[] => {
+      if (GEOMETRY_OVERLAYS.has(o.kind)) return [];
+      if (o.kind !== "callout") return [o];
+      const name = oldRef && oldPrimary ? nearestAnchor(oldRef, oldPrimary.box, o.target) : null;
+      const part = name ? (ref.anchors[name] ? name : ANCHOR_ALIASES[name]) : null;
+      const p = part ? ref.anchors[part] : undefined;
+      return p ? [{ ...o, target: { x: p.x * FRAME_WIDTH, y: p.y * FRAME_HEIGHT } }] : [];
+    });
     return {
       ...beat,
       background: "media" as const,
@@ -202,6 +287,7 @@ export function apply3dClips(sb: CreativeStoryboard, clips: readonly PlacedClip[
         },
         ...others,
       ],
+      overlays,
       note: `${beat.note} · 3D ${ref.render3d?.materialType} ${ref.id}`.trim(),
     };
   });

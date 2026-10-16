@@ -243,19 +243,24 @@ export async function runClipQa(input: ClipQaInput): Promise<ClipQaReport> {
   const pngs = fs.existsSync(r.framesDir)
     ? fs.readdirSync(r.framesDir).filter((f) => f.endsWith(".png")).length
     : 0;
+  const rendered = Math.max(2, Math.ceil((expected.frames / expected.fps) * r.fps - 1e-9));
   checks.push(
     check(
       "sequence_complete",
-      r.frameCount === expected.frames && pngs >= expected.frames,
+      r.frameCount === rendered && pngs >= rendered,
       "blocker",
       pngs,
-      `${expected.frames} rendered frames expected`,
+      `${rendered} rendered frames expected (${r.fps} fps)`,
     ),
   );
 
   const every = Math.max(1, Math.floor(probe.frames / 24));
   const frames = await sampledFrames(input.ffmpeg, input.video, every);
-  const stats = frames.map((f, k) => frameStats(f, SAMPLE_W, SAMPLE_H, r.productBoxes[k * every] ?? null));
+  // product boxes are per rendered frame; the video may be interpolated to a higher fps
+  const boxAt = (videoFrame: number) =>
+    r.productBoxes[Math.min(r.productBoxes.length - 1, Math.round((videoFrame * r.fps) / expected.fps))] ??
+    null;
+  const stats = frames.map((f, k) => frameStats(f, SAMPLE_W, SAMPLE_H, boxAt(k * every)));
   const black = stats.filter((s) => s.mean < 8 && s.max < 40).length;
   checks.push(
     check("no_black_frames", black === 0, "blocker", black, "frames that are (almost) entirely black"),

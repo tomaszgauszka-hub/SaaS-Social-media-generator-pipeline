@@ -13,6 +13,10 @@ import { runEngineProcess } from "./proc.ts";
 export interface EncodeOptions {
   ffmpeg: string;
   quality: "preview" | "production";
+  /** clip fps: a sequence rendered at a lower rate is interpolated to it (motion-compensated) */
+  fps: number;
+  /** clip length in output frames */
+  frames: number;
   signal?: AbortSignal;
 }
 
@@ -40,25 +44,42 @@ export function bestFrame(boxes: readonly number[][], count: number): number {
   return Math.min(Math.max(0, best), Math.max(0, count - 1));
 }
 
+/**
+ * Video filter: a sequence rendered below the clip fps is interpolated with motion compensation (as the product
+ * studio does for its FAST previews); two cloned tail frames let minterpolate reach the last input frame.
+ */
+export function videoFilter(renderFps: number, fps: number): string {
+  const interp =
+    renderFps < fps
+      ? `tpad=stop_mode=clone:stop=2,minterpolate=fps=${fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bilat:vsbmc=1,`
+      : "";
+  return `${interp}scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p`;
+}
+
 export function h264Args(
   input: string,
   startNumber: number,
-  fps: number,
+  renderFps: number,
   out: string,
   quality: "preview" | "production",
+  fps = renderFps,
+  frames?: number,
 ): string[] {
   return [
     "-y",
     "-loglevel",
     "error",
     "-framerate",
-    String(fps),
+    String(renderFps),
     "-start_number",
     String(startNumber),
     "-i",
     input,
     "-vf",
-    "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
+    videoFilter(renderFps, fps),
+    "-r",
+    String(fps),
+    ...(frames ? ["-frames:v", String(frames)] : []),
     "-c:v",
     "libx264",
     "-preset",
@@ -103,7 +124,7 @@ export async function encodeClip(
       timeoutMs: 30 * 60_000,
       ...(opts.signal ? { signal: opts.signal } : {}),
     });
-  await run(h264Args(input, r.startNumber, r.fps, video, opts.quality));
+  await run(h264Args(input, r.startNumber, r.fps, video, opts.quality, opts.fps, opts.frames));
   let alphaVideo: string | null = null;
   if (r.alpha) {
     alphaVideo = path.join(outDir, "clip_alpha.webm");
@@ -117,6 +138,7 @@ export async function encodeClip(
       String(r.startNumber),
       "-i",
       input,
+      ...(r.fps < opts.fps ? ["-vf", `fps=${opts.fps}`, "-frames:v", String(opts.frames)] : []),
       "-c:v",
       "libvpx-vp9",
       "-pix_fmt",

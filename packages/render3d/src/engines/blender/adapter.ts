@@ -52,6 +52,8 @@ export const BlenderSceneResult = z
         width: z.number().int().positive(),
         height: z.number().int().positive(),
         fps: z.number().int().positive(),
+        /** clip fps (the encoder interpolates a preview rendered at a lower rate) */
+        targetFps: z.number().int().positive().optional(),
         alpha: z.boolean(),
       })
       .strict(),
@@ -308,7 +310,10 @@ export class BlenderEngine implements RenderEngine {
   readResult(outDir: string): EngineRenderOutput {
     const file = path.join(outDir, "result.json");
     if (!fs.existsSync(file)) throw new FatalError("Blender finished without result.json");
-    const r = BlenderSceneResult.parse(JSON.parse(fs.readFileSync(file, "utf8")));
+    const parsed = BlenderSceneResult.safeParse(JSON.parse(fs.readFileSync(file, "utf8")));
+    if (!parsed.success)
+      throw new FatalError(`invalid Blender result.json: ${parsed.error.message.slice(0, 800)}`);
+    const r = parsed.data;
     const inside = (rel: string) => {
       const abs = path.resolve(outDir, rel);
       if (!abs.startsWith(path.resolve(outDir) + path.sep))

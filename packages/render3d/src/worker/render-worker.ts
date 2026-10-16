@@ -257,13 +257,15 @@ export class RenderWorker3D {
     }
     const renderMs = Date.now() - t0;
     const resources = sampler.stop();
+    const frames = frameCount(recipe.durationSec, recipe.fps);
     const enc = await encodeClip(out, path.join(work, "encoded"), {
       ffmpeg: this.o.ffmpeg,
       quality: recipe.quality,
+      fps: recipe.fps,
+      frames,
       ...(opts.signal ? { signal: opts.signal } : {}),
     });
     const [w, h] = renderSize(recipe);
-    const frames = frameCount(recipe.durationSec, recipe.fps);
     const qa = await runClipQa({
       video: enc.video,
       render: out,

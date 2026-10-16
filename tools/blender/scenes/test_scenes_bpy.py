@@ -66,9 +66,11 @@ class TemplatesTest(unittest.TestCase):
         for template, generator, extra in CASES:
             with self.subTest(template=template):
                 out, r = self.run_job(template, generator, extra)
-                self.assertEqual(r["frames"]["count"], 12)
-                self.assertEqual(len(os.listdir(os.path.join(out, "frames"))), 12)
-                self.assertEqual(len(r["productBoxes"]), 12)
+                # preview: 15 fps rendered (0.5 s → 8 frames), interpolated to 24 fps by the encoder
+                self.assertEqual(r["frames"]["count"], 8)
+                self.assertEqual(r["frames"]["targetFps"], 24)
+                self.assertEqual(len(os.listdir(os.path.join(out, "frames"))), 8)
+                self.assertEqual(len(r["productBoxes"]), 8)
                 self.assertEqual((r["frames"]["width"], r["frames"]["height"]), (128, 228))
                 for b in r["productBoxes"]:
                     self.assertLess(b[0], b[2])

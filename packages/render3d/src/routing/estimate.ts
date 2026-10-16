@@ -7,10 +7,16 @@ import type { Recipe3D } from "../contracts/recipe.ts";
  * telemetry; recorded telemetry (median of the last renders of the same engine / device / quality) replaces them.
  */
 
+/** Mirrors tools/blender/scenes/scene_spec.py QUALITY (a preview renders 15 fps, interpolated to the clip fps). */
 export const QUALITY_PROFILES = {
-  preview: { scale: 0.5, samples: 24 },
-  production: { scale: 1, samples: 96 },
+  preview: { scale: 0.5, samples: 16, renderFps: 15 },
+  production: { scale: 1, samples: 64, renderFps: null },
 } as const;
+
+export function renderFps(recipe: Pick<Recipe3D, "fps" | "quality">): number {
+  const cap = QUALITY_PROFILES[recipe.quality].renderFps;
+  return cap ? Math.min(recipe.fps, cap) : recipe.fps;
+}
 
 export interface TimingSample {
   engine: "blender" | "unreal";
@@ -64,7 +70,7 @@ export function estimateRender(
   device: "CPU" | "GPU",
   history: readonly TimingSample[] = [],
 ): RenderEstimate {
-  const frames = frameCount(recipe.durationSec, recipe.fps);
+  const frames = frameCount(recipe.durationSec, engine === "blender" ? renderFps(recipe) : recipe.fps);
   const [w, h] = renderSize(recipe);
   const samples = QUALITY_PROFILES[recipe.quality].samples;
   const relevant = history.filter(
