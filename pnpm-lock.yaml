@@ -77,12 +77,18 @@ importers:
       '@cre/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@cre/pipeline':
+        specifier: workspace:*
+        version: link:../../packages/pipeline
       '@cre/providers':
         specifier: workspace:*
         version: link:../../packages/providers
       '@cre/publishing':
         specifier: workspace:*
         version: link:../../packages/publishing
+      '@cre/render3d':
+        specifier: workspace:*
+        version: link:../../packages/render3d
       '@cre/shared':
         specifier: workspace:*
         version: link:../../packages/shared
