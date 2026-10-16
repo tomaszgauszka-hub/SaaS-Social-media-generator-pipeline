@@ -1,0 +1,511 @@
+{
+ "version": "reel-plan/1",
+ "metadata": {
+  "planId": "batch-B075X2FZSM-4d49542ee7-A",
+  "jobId": "batch-B075X2FZSM-4d49542ee7",
+  "variantKey": "A",
+  "configVersion": "reel-factory/1",
+  "seed": "1:A",
+  "hookStrategy": "visual_surprise",
+  "director": {
+   "provider": "template",
+   "model": "template-director/1",
+   "promptVersion": "template-director/1",
+   "fallbackUsed": false
+  }
+ },
+ "product": {
+  "id": "B075X2FZSM",
+  "name": "Rivet Table Lamp",
+  "brand": "Rivet",
+  "factIds": [
+   "dim.height",
+   "dim.height.cm",
+   "dim.width",
+   "dim.width.cm",
+   "dim.length",
+   "dim.length.cm",
+   "material.en-US",
+   "color.es-US",
+   "color.de-DE",
+   "color.en-US",
+   "finish",
+   "brand",
+   "model_number",
+   "type.es-US",
+   "type.de-DE",
+   "type.en-US",
+   "bp.es-US.1",
+   "bp.es-US.2",
+   "bp.es-US.3",
+   "bp.es-US.4",
+   "bp.es-US.5",
+   "bp.es-US.6",
+   "bp.es-US.7",
+   "bp.pt-BR.1",
+   "bp.pt-BR.2",
+   "bp.pt-BR.3",
+   "bp.pt-BR.4",
+   "bp.pt-BR.5",
+   "bp.pt-BR.6",
+   "bp.pt-BR.7",
+   "bp.de-DE.1",
+   "bp.de-DE.2",
+   "bp.de-DE.3",
+   "bp.de-DE.4",
+   "bp.de-DE.5",
+   "bp.de-DE.6",
+   "bp.de-DE.7",
+   "bp.en-US.1",
+   "bp.en-US.2",
+   "bp.en-US.3",
+   "bp.en-US.4",
+   "bp.en-US.5",
+   "bp.en-US.6",
+   "bp.en-US.7"
+  ],
+  "model3dSha": "f618b2f41ee686095bdbbda28000b3c7e287a484dfa74ed475a1be2655014964"
+ },
+ "masterLocale": "pl-PL",
+ "language": "pl-PL",
+ "market": "PL",
+ "platform": "tiktok",
+ "durationMs": 12000,
+ "resolution": {
+  "width": 1080,
+  "height": 1920
+ },
+ "fps": 30,
+ "objective": "conversion",
+ "targetAudience": "home-decor lovers styling a living room or hallway",
+ "structure": [
+  {
+   "role": "HOOK",
+   "startMs": 0,
+   "endMs": 2300
+  },
+  {
+   "role": "BENEFIT",
+   "startMs": 2300,
+   "endMs": 5133
+  },
+  {
+   "role": "PROOF",
+   "startMs": 5133,
+   "endMs": 7433
+  },
+  {
+   "role": "DESIRE",
+   "startMs": 7433,
+   "endMs": 9700
+  },
+  {
+   "role": "CTA",
+   "startMs": 9700,
+   "endMs": 12000
+  }
+ ],
+ "visual_style": {
+  "environment": "warm_living",
+  "energy": 0.55,
+  "lighting": "warm_practical",
+  "palette": {
+   "primary": "#2B2420",
+   "accent": "#E8A33D",
+   "text": "#FFFFFF"
+  }
+ },
+ "camera": {
+  "lensMm": 65,
+  "dof": {
+   "enabled": true,
+   "fStop": 4
+  },
+  "motionBlur": false
+ },
+ "product_animation": {
+  "default": "none"
+ },
+ "shots": [
+  {
+   "id": "sh01",
+   "role": "HOOK",
+   "startMs": 0,
+   "durationMs": 2300,
+   "preset": "silhouette_reveal",
+   "technique": "relight",
+   "environment": "warm_living",
+   "lighting": "rim_dramatic",
+   "params": {
+    "intensity": 0.63,
+    "angleDeg": -25,
+    "height": 0.55,
+    "focus": "whole",
+    "fill": 0.55,
+    "sweepDeg": 30,
+    "centerY": 0.565
+   },
+   "productAnimation": "light_on",
+   "transitionIn": {
+    "type": "cut",
+    "ms": 0
+   },
+   "source": "blender"
+  },
+  {
+   "id": "sh02",
+   "role": "BENEFIT",
+   "startMs": 2300,
+   "durationMs": 2833,
+   "preset": "slow_turntable",
+   "technique": "sequence",
+   "environment": "warm_living",
+   "lighting": "warm_practical",
+   "params": {
+    "intensity": 0.63,
+    "angleDeg": 22,
+    "height": 0.55,
+    "focus": "whole",
+    "fill": 0.62,
+    "sweepDeg": 40
+   },
+   "productAnimation": "none",
+   "transitionIn": {
+    "type": "fade",
+    "ms": 320
+   },
+   "source": "blender"
+  },
+  {
+   "id": "sh03",
+   "role": "PROOF",
+   "startMs": 5133,
+   "durationMs": 2300,
+   "preset": "macro_push",
+   "technique": "plate",
+   "environment": "warm_living",
+   "lighting": "warm_practical",
+   "params": {
+    "intensity": 0.63,
+    "angleDeg": -35,
+    "height": 0.55,
+    "focus": "base",
+    "fill": 1.5,
+    "sweepDeg": 30
+   },
+   "productAnimation": "none",
+   "transitionIn": {
+    "type": "fade",
+    "ms": 320
+   },
+   "source": "blender",
+   "overlaySlot": "overlay.sh03.curved_brass_stem"
+  },
+  {
+   "id": "sh04",
+   "role": "DESIRE",
+   "startMs": 7433,
+   "durationMs": 2267,
+   "preset": "camera_slide",
+   "technique": "plate",
+   "environment": "warm_living",
+   "lighting": "warm_practical",
+   "params": {
+    "intensity": 0.63,
+    "angleDeg": 30,
+    "height": 0.55,
+    "focus": "whole",
+    "fill": 0.62,
+    "sweepDeg": 30
+   },
+   "productAnimation": "none",
+   "transitionIn": {
+    "type": "smoothleft",
+    "ms": 300
+   },
+   "source": "blender",
+   "overlaySlot": "overlay.sh04.led_bulb_included"
+  },
+  {
+   "id": "sh05",
+   "role": "CTA",
+   "startMs": 9700,
+   "durationMs": 2300,
+   "preset": "cta_hero",
+   "technique": "plate",
+   "environment": "warm_living",
+   "lighting": "warm_practical",
+   "params": {
+    "intensity": 0.63,
+    "angleDeg": -18,
+    "height": 0.55,
+    "focus": "whole",
+    "fill": 0.54,
+    "sweepDeg": 30,
+    "centerY": 0.59
+   },
+   "productAnimation": "none",
+   "transitionIn": {
+    "type": "fade",
+    "ms": 320
+   },
+   "source": "blender"
+  }
+ ],
+ "voiceover": {
+  "enabled": true,
+  "personaId": "homely-warm",
+  "pace": 1,
+  "style": "warm, calm and confident; conversational commercial read; a smile in the voice",
+  "segments": [
+   {
+    "slot": "voice.1.hook",
+    "atMs": 250
+   },
+   {
+    "slot": "voice.2.materials_walnut_brass_fabric",
+    "atMs": 2440
+   },
+   {
+    "slot": "voice.3.desire",
+    "atMs": 7573
+   },
+   {
+    "slot": "voice.4.cta",
+    "atMs": 9840
+   }
+  ]
+ },
+ "music": {
+  "intent": {
+   "genre": "deep_house",
+   "mood": "warm",
+   "bpm": 105,
+   "energy": 0.58,
+   "instrumental": true,
+   "durationMs": 12000,
+   "brandFeel": "Homely Finds: warm, elegant, calm",
+   "events": [
+    {
+     "timeMs": 0,
+     "energy": 0.3
+    },
+    {
+     "timeMs": 2300,
+     "energy": 0.6
+    },
+    {
+     "timeMs": 2300,
+     "event": "drop"
+    },
+    {
+     "timeMs": 7414,
+     "event": "riser"
+    },
+    {
+     "timeMs": 9700,
+     "energy": 0.85
+    },
+    {
+     "timeMs": 9700,
+     "event": "final_hit"
+    }
+   ],
+   "seed": "B075X2FZSM:deep_house:warm:105:12000"
+  },
+  "gainDb": -10,
+  "ducking": {
+   "enabled": true,
+   "depthDb": 10,
+   "attackMs": 80,
+   "releaseMs": 350
+  }
+ },
+ "sfx": [
+  {
+   "atMs": 700,
+   "kind": "light_switch",
+   "gainDb": -6
+  },
+  {
+   "atMs": 2300,
+   "kind": "whoosh",
+   "gainDb": -12
+  },
+  {
+   "atMs": 5133,
+   "kind": "shimmer",
+   "gainDb": -14
+  },
+  {
+   "atMs": 7433,
+   "kind": "whoosh",
+   "gainDb": -12
+  },
+  {
+   "atMs": 9700,
+   "kind": "bass_hit",
+   "gainDb": -6
+  }
+ ],
+ "captions": {
+  "enabled": true,
+  "style": "word_highlight",
+  "source": "voiceover",
+  "maxWordsPerPhrase": 4
+ },
+ "cta": {
+  "slot": "cta",
+  "buttonSlot": "button",
+  "startMs": 9700,
+  "endMs": 12000,
+  "style": "button"
+ },
+ "branding": {
+  "logo": {
+   "enabled": true,
+   "position": "top_left",
+   "startMs": 0,
+   "endMs": 12000
+  },
+  "disclosureSlot": "disclosure",
+  "brandName": "Homely Finds"
+ },
+ "render_profile": {
+  "blender": "FAST",
+  "encode": {
+   "crf": 16,
+   "preset": "veryfast"
+  },
+  "audio": {
+   "sampleRate": 48000,
+   "lufs": -14,
+   "truePeakDb": -1.5
+  }
+ },
+ "providers": {
+  "product_analysis": "deterministic",
+  "director": "template",
+  "transcreation": "template",
+  "music": "music-library",
+  "voice": "piper",
+  "transcription": "local-alignment",
+  "sfx": "cache:local-sfx",
+  "visual_qa": "deterministic",
+  "render_3d": "blender",
+  "compose": "ffmpeg"
+ },
+ "fallbacks": {
+  "product_analysis": [
+   "deterministic"
+  ],
+  "director": [
+   "template"
+  ],
+  "transcreation": [
+   "template"
+  ],
+  "music": [
+   "music-library",
+   "local-synth"
+  ],
+  "voice": [
+   "piper",
+   "flite"
+  ],
+  "transcription": [
+   "local-alignment"
+  ],
+  "sfx": [
+   "cache:local-sfx",
+   "local-sfx"
+  ],
+  "visual_qa": [
+   "deterministic"
+  ],
+  "embedding": [],
+  "image": [],
+  "generative_video": [],
+  "render_3d": [
+   "blender"
+  ],
+  "compose": [
+   "ffmpeg"
+  ]
+ },
+ "budget": {
+  "maxApiCostUsd": 0,
+  "estimatedApiCostUsd": 0
+ },
+ "copy": {
+  "locale": "pl-PL",
+  "market": "PL",
+  "slots": {
+   "hook": {
+    "kind": "hook",
+    "text": "Poczekaj, aż się zaświeci",
+    "factIds": []
+   },
+   "overlay.sh03.curved_brass_stem": {
+    "kind": "overlay",
+    "text": "Lekko wygięty mosiężny trzon",
+    "factIds": [
+     "bp.en-US.7",
+     "bp.de-DE.7"
+    ]
+   },
+   "overlay.sh04.led_bulb_included": {
+    "kind": "overlay",
+    "text": "Żarówka LED w zestawie",
+    "factIds": [
+     "bp.en-US.4",
+     "bp.de-DE.4"
+    ]
+   },
+   "voice.1.hook": {
+    "kind": "voice",
+    "text": "Poczekaj, aż się zaświeci.",
+    "factIds": []
+   },
+   "voice.2.materials_walnut_brass_fabric": {
+    "kind": "voice",
+    "text": "Orzechowa podstawa, mosiężny trzon i abażur z tkaniny.",
+    "factIds": [
+     "bp.en-US.2",
+     "bp.en-US.7"
+    ]
+   },
+   "voice.3.desire": {
+    "kind": "voice",
+    "text": "Wieczór w zupełnie nowym świetle.",
+    "factIds": []
+   },
+   "voice.4.cta": {
+    "kind": "voice",
+    "text": "Link znajdziesz w bio.",
+    "factIds": []
+   },
+   "cta": {
+    "kind": "cta",
+    "text": "Link w bio",
+    "factIds": []
+   },
+   "button": {
+    "kind": "button",
+    "text": "Sprawdź cenę",
+    "factIds": []
+   },
+   "disclosure": {
+    "kind": "disclosure",
+    "text": "Reklama · link afiliacyjny",
+    "factIds": []
+   }
+  },
+  "transcreation": {
+   "provider": "template",
+   "model": "template-director/1",
+   "sourceLocale": "pl-PL",
+   "isMaster": true
+  }
+ }
+}

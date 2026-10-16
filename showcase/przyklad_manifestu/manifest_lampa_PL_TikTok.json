@@ -1,0 +1,575 @@
+{
+ "manifestVersion": "reel-manifest/1",
+ "jobId": "batch-B075X2FZSM-4d49542ee7",
+ "variantId": "batch-B075X2FZSM-4d49542ee7-A-pl-PL",
+ "variantKey": "A",
+ "productId": "B075X2FZSM",
+ "brandId": "homely-finds",
+ "language": "pl-PL",
+ "market": "PL",
+ "platform": "tiktok",
+ "tier": "ECONOMY",
+ "hookStrategy": "visual_surprise",
+ "providers": {
+  "director": "template",
+  "directorModel": "template-director/1",
+  "productAnalysis": "deterministic",
+  "transcreation": "master",
+  "imageProvider": "none",
+  "musicProvider": "local-synth",
+  "voiceProvider": "piper",
+  "sfxProvider": "cache:local-sfx",
+  "transcriptionProvider": "alignment",
+  "videoProvider": "blender",
+  "visualQa": "deterministic"
+ },
+ "blenderProfile": "FAST",
+ "shots": [
+  {
+   "id": "sh01",
+   "preset": "silhouette_reveal",
+   "technique": "relight",
+   "source": "blender",
+   "durationMs": 2300,
+   "cacheHit": false,
+   "renderMs": 73181
+  },
+  {
+   "id": "sh02",
+   "preset": "slow_turntable",
+   "technique": "sequence",
+   "source": "blender",
+   "durationMs": 2833,
+   "cacheHit": false,
+   "renderMs": 286760
+  },
+  {
+   "id": "sh03",
+   "preset": "macro_push",
+   "technique": "plate",
+   "source": "blender",
+   "durationMs": 2300,
+   "cacheHit": false,
+   "renderMs": 40033
+  },
+  {
+   "id": "sh04",
+   "preset": "camera_slide",
+   "technique": "plate",
+   "source": "blender",
+   "durationMs": 2267,
+   "cacheHit": false,
+   "renderMs": 38369
+  },
+  {
+   "id": "sh05",
+   "preset": "cta_hero",
+   "technique": "plate",
+   "source": "blender",
+   "durationMs": 2300,
+   "cacheHit": false,
+   "renderMs": 37600
+  }
+ ],
+ "durationMs": 12000,
+ "timings": {
+  "voice": 665,
+  "ffmpeg_localized": 11996,
+  "qa": 5999
+ },
+ "renderTimeMs": 18660,
+ "tokens": {
+  "input": 0,
+  "output": 0
+ },
+ "cost": {
+  "byCategory": {
+   "llm": 0,
+   "image": 0,
+   "music": 0,
+   "tts": 0,
+   "sfx": 0,
+   "transcription": 0,
+   "embedding": 0,
+   "generative_video": 0,
+   "visual_qa": 0
+  },
+  "totalApiMicros": 0,
+  "tokens": {
+   "input": 0,
+   "output": 0
+  },
+  "compute": {
+   "blenderMs": 0,
+   "ffmpegMs": 11995,
+   "audioMs": 5,
+   "otherMs": 5998
+  },
+  "entries": [],
+  "computeEntries": [
+   {
+    "stage": "tts_local",
+    "label": "piper pl-mls_6892-low 26 chars",
+    "wallMs": 1,
+    "cached": true,
+    "scope": "A:pl-PL:voice"
+   },
+   {
+    "stage": "tts_local",
+    "label": "piper pl-mls_6892-low 54 chars",
+    "wallMs": 2,
+    "cached": true,
+    "scope": "A:pl-PL:voice"
+   },
+   {
+    "stage": "tts_local",
+    "label": "piper pl-mls_6892-low 33 chars",
+    "wallMs": 1,
+    "cached": true,
+    "scope": "A:pl-PL:voice"
+   },
+   {
+    "stage": "tts_local",
+    "label": "piper pl-mls_6892-low 22 chars",
+    "wallMs": 1,
+    "cached": true,
+    "scope": "A:pl-PL:voice"
+   },
+   {
+    "stage": "ffmpeg",
+    "label": "localized A-pl-PL-tiktok",
+    "wallMs": 11995,
+    "frames": 360,
+    "cached": false,
+    "scope": "A:pl-PL:tiktok"
+   },
+   {
+    "stage": "qa",
+    "label": "technical qa",
+    "wallMs": 4179,
+    "cached": false,
+    "scope": "A:pl-PL:tiktok"
+   },
+   {
+    "stage": "qa",
+    "label": "visual qa (deterministic)",
+    "wallMs": 1819,
+    "cached": false,
+    "scope": "A:pl-PL:tiktok"
+   }
+  ]
+ },
+ "totalApiCostUsd": 0,
+ "sharedApiCostUsd": 0,
+ "fallbacks": [
+  {
+   "capability": "music",
+   "wanted": "music-library",
+   "used": "local-synth",
+   "reason": "music-library: music library is empty"
+  }
+ ],
+ "generativeVideo": [
+  {
+   "shotId": "sh01",
+   "used": false,
+   "reason": "silhouette_reveal is rendered by the Blender studio",
+   "seconds": 0,
+   "costUsd": 0
+  },
+  {
+   "shotId": "sh02",
+   "used": false,
+   "reason": "slow_turntable is rendered by the Blender studio",
+   "seconds": 0,
+   "costUsd": 0
+  },
+  {
+   "shotId": "sh03",
+   "used": false,
+   "reason": "macro_push is rendered by the Blender studio",
+   "seconds": 0,
+   "costUsd": 0
+  },
+  {
+   "shotId": "sh04",
+   "used": false,
+   "reason": "camera_slide is rendered by the Blender studio",
+   "seconds": 0,
+   "costUsd": 0
+  },
+  {
+   "shotId": "sh05",
+   "used": false,
+   "reason": "cta_hero is rendered by the Blender studio",
+   "seconds": 0,
+   "costUsd": 0
+  }
+ ],
+ "masterVideo": {
+  "path": "/home/user/SaaS-Social-media-generator-pipeline/.data/reels/batch-B075X2FZSM-4d49542ee7/A.master.mp4",
+  "visualHash": "ccb14889874b686bb82450bf8b04cdfb24eb90e7",
+  "reused": false
+ },
+ "qa": {
+  "score": 100,
+  "passed": true,
+  "rerenderRequired": false,
+  "checks": [
+   {
+    "id": "integrity",
+    "passed": true,
+    "value": 0,
+    "note": "0 decode errors"
+   },
+   {
+    "id": "codecs",
+    "passed": true,
+    "value": "h264/yuv420p+aac",
+    "note": "expected h264/yuv420p + aac"
+   },
+   {
+    "id": "resolution",
+    "passed": true,
+    "value": "1080x1920",
+    "note": "expected 1080x1920"
+   },
+   {
+    "id": "fps",
+    "passed": true,
+    "value": 30,
+    "note": "expected 30 fps"
+   },
+   {
+    "id": "duration",
+    "passed": true,
+    "value": 12000,
+    "note": "12000 ms vs planned 12000 ms (±1 frame)"
+   },
+   {
+    "id": "platform_duration",
+    "passed": true,
+    "value": 12000,
+    "note": "TikTok accepts 7000–60000 ms"
+   },
+   {
+    "id": "frames",
+    "passed": true,
+    "value": 360,
+    "note": "360 frames vs 360 expected"
+   },
+   {
+    "id": "audio_present",
+    "passed": true,
+    "value": "2 ch @ 48000",
+    "note": "an audio stream (48 kHz stereo) is required"
+   },
+   {
+    "id": "loudness",
+    "passed": true,
+    "value": -14,
+    "note": "integrated -14 LUFS vs -14 ±1.5"
+   },
+   {
+    "id": "true_peak",
+    "passed": true,
+    "value": -2.8,
+    "note": "true peak -2.8 dBTP ≤ -1.5"
+   },
+   {
+    "id": "black_frames",
+    "passed": true,
+    "value": [],
+    "note": "0 ms of unintended black"
+   },
+   {
+    "id": "frozen",
+    "passed": true,
+    "value": [],
+    "note": "0 frozen stretches > 2.5 s"
+   },
+   {
+    "id": "file_size",
+    "passed": true,
+    "value": 7147704,
+    "note": "7.1 MB ≤ 287 MB"
+   },
+   {
+    "id": "product:sh01",
+    "passed": true,
+    "value": {
+     "visible": 1,
+     "heightShare": 0.522,
+     "coverage": 0.345,
+     "closeup": false
+    },
+    "note": "100 % of the product inside the frame, 52 % of the height"
+   },
+   {
+    "id": "product:sh02",
+    "passed": true,
+    "value": {
+     "visible": 1,
+     "heightShare": 0.608,
+     "coverage": 0.463,
+     "closeup": false
+    },
+    "note": "100 % of the product inside the frame, 61 % of the height"
+   },
+   {
+    "id": "product:sh03",
+    "passed": true,
+    "value": {
+     "visible": 0.207,
+     "heightShare": 1,
+     "coverage": 0.558,
+     "closeup": true
+    },
+    "note": "21 % of the product inside the frame, 100 % of the height"
+   },
+   {
+    "id": "product:sh04",
+    "passed": true,
+    "value": {
+     "visible": 1,
+     "heightShare": 0.621,
+     "coverage": 0.484,
+     "closeup": false
+    },
+    "note": "100 % of the product inside the frame, 62 % of the height"
+   },
+   {
+    "id": "product:sh05",
+    "passed": true,
+    "value": {
+     "visible": 1,
+     "heightShare": 0.512,
+     "coverage": 0.334,
+     "closeup": false
+    },
+    "note": "100 % of the product inside the frame, 51 % of the height"
+   },
+   {
+    "id": "captions_safe_area",
+    "passed": true,
+    "value": {
+     "x": 156,
+     "y": 1050,
+     "w": 768,
+     "h": 260
+    },
+    "note": "caption band clear of the platform UI"
+   },
+   {
+    "id": "captions_fit",
+    "passed": true,
+    "value": 0
+   },
+   {
+    "id": "text:hook",
+    "passed": true,
+    "value": {
+     "hits": [],
+     "readable": true,
+     "contrast": 17.77,
+     "productHidden": 0
+    },
+    "note": "hook \"Poczekaj, aż się zaświeci\""
+   },
+   {
+    "id": "text:overlay.sh03.curved_brass_stem",
+    "passed": true,
+    "value": {
+     "hits": [],
+     "readable": true,
+     "contrast": 17.77,
+     "productHidden": 0
+    },
+    "note": "overlay \"Lekko wygięty mosiężny trzon\""
+   },
+   {
+    "id": "text:overlay.sh04.led_bulb_included",
+    "passed": true,
+    "value": {
+     "hits": [],
+     "readable": true,
+     "contrast": 17.77,
+     "productHidden": 0
+    },
+    "note": "overlay \"Żarówka LED w zestawie\""
+   },
+   {
+    "id": "text:cta",
+    "passed": true,
+    "value": {
+     "hits": [],
+     "readable": true,
+     "contrast": 17.77,
+     "productHidden": 0
+    },
+    "note": "cta \"Link w bio\""
+   },
+   {
+    "id": "text:button",
+    "passed": true,
+    "value": {
+     "hits": [],
+     "readable": true,
+     "contrast": 7.08,
+     "productHidden": 0
+    },
+    "note": "button \"Sprawdź cenę\""
+   },
+   {
+    "id": "text:disclosure",
+    "passed": true,
+    "value": {
+     "hits": [],
+     "readable": true,
+     "contrast": null,
+     "productHidden": 0
+    },
+    "note": "disclosure \"Reklama · link afiliacyjny\""
+   },
+   {
+    "id": "cta_visible",
+    "passed": true,
+    "value": {
+     "windowMs": 2300,
+     "present": true,
+     "button": true
+    },
+    "note": "CTA on screen 2300 ms (min 1800 ms) until 12000 ms"
+   },
+   {
+    "id": "branding",
+    "passed": true,
+    "value": {
+     "logoMs": 12000,
+     "brandText": false
+    },
+    "note": "logo on screen 12000 ms"
+   },
+   {
+    "id": "logo_clear",
+    "passed": true,
+    "value": {
+     "logo": {
+      "x": 48,
+      "y": 164,
+      "w": 212,
+      "h": 52
+     },
+     "texts": []
+    },
+    "note": "logo clear of text"
+   },
+   {
+    "id": "disclosure",
+    "passed": true,
+    "value": {
+     "required": true,
+     "coverage": 1
+    },
+    "note": "Reklama · link afiliacyjny"
+   },
+   {
+    "id": "voice_timing",
+    "passed": true,
+    "value": {
+     "words": 21,
+     "lastEndMs": 10620,
+     "source": "alignment"
+    },
+    "note": "piper/pl-mls_6892-low, timings: alignment"
+   },
+   {
+    "id": "visual_qa",
+    "passed": true,
+    "value": {
+     "provider": "deterministic",
+     "score": 100
+    }
+   },
+   {
+    "id": "product_colors",
+    "passed": true,
+    "value": {
+     "passed": true,
+     "rendered": [
+      "#966E49",
+      "#B67239",
+      "#975C2A",
+      "#61320C",
+      "#E18C46"
+     ],
+     "matches": [
+      {
+       "expected": "#A09180",
+       "nearest": "#966E49",
+       "deltaE": 21.2
+      },
+      {
+       "expected": "#8C7965",
+       "nearest": "#966E49",
+       "deltaE": 15.1
+      },
+      {
+       "expected": "#5E4837",
+       "nearest": "#966E49",
+       "deltaE": 22
+      },
+      {
+       "expected": "#D9D3CB",
+       "nearest": "#966E49",
+       "deltaE": 42.9
+      }
+     ],
+     "note": "3/4 catalog colours found in the rendered product (ΔE ≤ 30)"
+    },
+    "note": "3/4 catalog colours found in the rendered product (ΔE ≤ 30)"
+   }
+  ],
+  "issues": [],
+  "frames": [
+   {
+    "atMs": 1200,
+    "path": "/home/user/SaaS-Social-media-generator-pipeline/.data/work/reel/batch-B075X2FZSM-4d49542ee7/qa-A-pl-PL-tiktok/frame_10.jpg"
+   },
+   {
+    "atMs": 3600,
+    "path": "/home/user/SaaS-Social-media-generator-pipeline/.data/work/reel/batch-B075X2FZSM-4d49542ee7/qa-A-pl-PL-tiktok/frame_30.jpg"
+   },
+   {
+    "atMs": 6000,
+    "path": "/home/user/SaaS-Social-media-generator-pipeline/.data/work/reel/batch-B075X2FZSM-4d49542ee7/qa-A-pl-PL-tiktok/frame_50.jpg"
+   },
+   {
+    "atMs": 8400,
+    "path": "/home/user/SaaS-Social-media-generator-pipeline/.data/work/reel/batch-B075X2FZSM-4d49542ee7/qa-A-pl-PL-tiktok/frame_70.jpg"
+   },
+   {
+    "atMs": 10800,
+    "path": "/home/user/SaaS-Social-media-generator-pipeline/.data/work/reel/batch-B075X2FZSM-4d49542ee7/qa-A-pl-PL-tiktok/frame_90.jpg"
+   }
+  ],
+  "visualQa": {
+   "provider": "deterministic",
+   "model": "ffmpeg-signalstats/1",
+   "score": 100,
+   "issues": [],
+   "rerenderRequired": false
+  },
+  "retries": []
+ },
+ "output": {
+  "video": "/home/user/SaaS-Social-media-generator-pipeline/.data/reels/batch-B075X2FZSM-4d49542ee7/batch-B075X2FZSM-4d49542ee7-A-pl-PL.mp4",
+  "poster": "/home/user/SaaS-Social-media-generator-pipeline/.data/reels/batch-B075X2FZSM-4d49542ee7/batch-B075X2FZSM-4d49542ee7-A-pl-PL.jpg",
+  "plan": "/home/user/SaaS-Social-media-generator-pipeline/.data/reels/batch-B075X2FZSM-4d49542ee7/batch-B075X2FZSM-4d49542ee7-A-pl-PL.plan.json",
+  "captions": "/home/user/SaaS-Social-media-generator-pipeline/.data/work/reel/batch-B075X2FZSM-4d49542ee7/compose-A-pl-PL-tiktok/captions.ass"
+ },
+ "seed": "1:A",
+ "configVersion": "reel-factory/1",
+ "createdAt": "2026-10-10T08:01:23.280Z",
+ "attribution": "Amazon Berkeley Objects (ABO) dataset, CC BY 4.0 — https://amazon-berkeley-objects.s3.amazonaws.com/index.html"
+}
