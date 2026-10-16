@@ -170,6 +170,21 @@ class PartTracker:
             local = pts[idx] @ inv[:3, :3].T + inv[:3, 3]
             self.items.append((part, local))
 
+    def subset(self, part: str | None, near: tuple | None = None, radius: float = 0.0) -> "PartTracker":
+        """The tracked points of one part, or those within `radius` of `near` at rest (an anchor's surroundings)."""
+        sub = PartTracker.__new__(PartTracker)
+        sub.items = []
+        for p, local in self.items:
+            if part is not None and p.name != part:
+                continue
+            if near is not None:
+                mw = np.array(p.handle.matrix_world)
+                world = local @ mw[:3, :3].T + mw[:3, 3]
+                local = local[np.linalg.norm(world - np.array(near), axis=1) <= radius]
+            if len(local):
+                sub.items.append((p, local))
+        return sub
+
     def world_points(self) -> np.ndarray:
         out = []
         for part, local in self.items:
@@ -342,6 +357,13 @@ def run(job: dict) -> dict:
     w, h = scene.render.resolution_x, scene.render.resolution_y
     tracker = PartTracker(prod)
     pts = framing_points(job, prod, tracker)
+    # detail shots crop the product on purpose: the per-frame box (QA, exposure, thumbnail) follows the detail
+    subject = tracker
+    if focus_part is not None:
+        part_focus = focus_part in prod.parts
+        subject = tracker.subset(focus_part if part_focus else None, None if part_focus else target, extent)
+        if not subject.items:
+            subject = tracker
     if focus_part is None:  # frame the whole motion envelope (explode / turntable), not just the rest pose
         arr = np.array(pts)
         c = (arr.min(axis=0) + arr.max(axis=0)) / 2
@@ -354,9 +376,10 @@ def run(job: dict) -> dict:
         fill = job["framing"]["fill"] or CAMERA[preset][4]
         dist = 0.0
         for tt in (0.0, 0.5, 1.0):
-            az, el, _ = camera_angles(preset, movement, tt)
+            az, el, dolly = camera_angles(preset, movement, tt)
             fit = framing.fit_camera(pts, target, az, el, lens_mm, w, h, fill, max_width=0.9)
-            dist = max(dist, fit.distance)
+            # a push-in ends closer than it starts: its closest point must still keep the product in frame
+            dist = max(dist, fit.distance / (1.0 - dolly))
     reach = dist * 1.3 + prod.size
     bg = job["background"]
     if tpl == "LIFESTYLE" or bg["preset"] == "environment":
@@ -392,6 +415,8 @@ def run(job: dict) -> dict:
     boxes: list[list[float]] = []
     cameras: list[dict] = []
     sweep_on = tpl in ("PRODUCT_HERO", "MACRO_DETAIL", "BRAND_ENVIRONMENT")
+    # a full sweep leaves a glossy dark detail unlit at the end of a macro: there it stops just past the glint
+    sweep_end = 0.3 if tpl == "MACRO_DETAIL" else 1.0
     for f in range(1, n + 1):
         t = (f - 1) / max(1, n - 1)
         tsec = t * job["durationSec"]
@@ -419,11 +444,11 @@ def run(job: dict) -> dict:
                 focus = d * (0.9 + 0.1 * spec_mod.ease_in_out(t / 0.33))
             cam.data.dof.focus_distance = focus
             cam.data.dof.keyframe_insert("focus_distance", frame=f)
-        rig.set_levels(1.0, 1.0, 1.0, 0.0, (2.0 * t - 1.0) if sweep_on else None, frame=f)
+        rig.set_levels(1.0, 1.0, 1.0, 0.0, (-1.0 + (1.0 + sweep_end) * t) if sweep_on else None, frame=f)
         # per-frame product box and anchor tracks (after this frame's transforms)
         bpy.context.view_layer.update()
         lens = framing.Lens(lens_mm, w, h, 0.0, shift_y)
-        wp = tracker.world_points()
+        wp = subject.world_points()
         try:
             u0, v0, u1, v1 = framing.project_box([tuple(x) for x in wp[:: max(1, len(wp) // 600)]], pos, basis,
                                                  lens)

@@ -71,7 +71,8 @@ export interface EngineRenderOutput {
   height: number;
   fps: number;
   alpha: boolean;
-  /** [u0, v0, u1, v1] per frame, normalised frame coordinates (may exceed 0–1 when out of frame) */
+  /** [u0, v0, u1, v1] per frame, normalised frame coordinates (may exceed 0–1 when out of frame) — the box of the
+   *  framed subject: the whole product, or the focus part on detail (macro) shots that crop the product on purpose */
   productBoxes: number[][];
   anchorTracks: Record<string, ([number, number] | null)[]>;
   controlViews: string[];
