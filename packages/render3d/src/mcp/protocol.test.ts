@@ -17,6 +17,8 @@ const setup = () =>
     library: new FileAssetLibrary(path.join(dir, "lib"), storage),
     blender: new FakeEngine("blender"),
     unreal: new FakeEngine("unreal", { available: false }),
+    // never the host's real lock / scratch directories (a render may be running on this machine)
+    worker: { lockDir: path.join(dir, "locks"), workRoot: path.join(dir, "work"), minFreeRamMb: 1 },
   });
 
 const call = (name: string, args: Record<string, unknown>) =>
