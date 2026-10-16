@@ -26,7 +26,7 @@ import type { LocatedShotResult, StudioShotOutput } from "./run.ts";
  * schema, numbers are formatted by code.
  */
 
-export const SHOT_CLIP_VERSION = "shot-clip/1";
+export const SHOT_CLIP_VERSION = "shot-clip/2"; // 2: film look (bloom, vignette, grain)
 export const SHOT_CLIP_CRF = 14;
 
 /** perspective's `in` counts from 1 in FFmpeg 6.1 (verified by the ffmpeg test): frame index = in − 1 */
@@ -40,6 +40,16 @@ const lut = (e: string) => `lutrgb=r='${e}':g='${e}':b='${e}'`;
 /** RGB → BT.709 limited-range YUV (HD players decode untagged and tagged 1080p as 709) */
 const toYuv709 = (w: number, h: number) =>
   `scale=${w}:${h}:flags=lanczos:out_color_matrix=bt709:out_range=tv,setsar=1,format=yuv420p`;
+
+/**
+ * Camera look of every studio clip, applied before any text is laid over it: a soft bloom around the brightest
+ * areas (a lit shade glows the way it does through a real lens) and a gentle vignette (RGB, `w` = input width)
+ * plus fine moving grain on the final luma. A spotless CG frame reads as a render; these read as a camera.
+ */
+const filmLook = (w: number) =>
+  `split=2[lk0][lk1];[lk1]curves=all='0/0 0.72/0 1/1',gblur=sigma=${Math.max(4, Math.round(w / 30))}[lkg];` +
+  `[lk0][lkg]blend=all_mode=screen:all_opacity=0.32,vignette=angle=PI/5`;
+const GRAIN = "noise=c0s=5:c0f=t+u";
 
 export interface ShotClipArgsInput {
   shot: Pick<
@@ -55,6 +65,8 @@ export interface ShotClipArgsInput {
   outPath: string;
   crf?: number;
   x264Preset?: "veryfast" | "fast" | "medium" | "slow";
+  /** "film" (default): bloom, vignette and grain · "clean": the studio frame as rendered */
+  look?: "film" | "clean";
 }
 
 export interface ShotClipArgs {
@@ -67,6 +79,9 @@ export interface ShotClipArgs {
 /** Pure: FFmpeg arguments + the product track of one shot clip. */
 export function buildShotClipArgs(input: ShotClipArgsInput): ShotClipArgs {
   const { shot, planShot, fps, width: W, height: H } = input;
+  const film = (input.look ?? "film") === "film";
+  const look = film ? `${filmLook(shot.width)},` : "";
+  const grain = film ? `,${GRAIN}` : "";
   const N = Math.max(1, Math.round((planShot.durationMs * fps) / 1000));
   const seconds = ((N + 2) / fps).toFixed(4);
   const file = (f: string) => path.join(input.dir, f);
@@ -113,8 +128,9 @@ export function buildShotClipArgs(input: ShotClipArgsInput): ShotClipArgs {
         ? `fps=${fps}`
         : `tpad=stop_mode=clone:stop=2,minterpolate=fps=${fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bilat:vsbmc=1`;
     const graph =
-      `[0:v]scale=out_color_matrix=bt709:out_range=tv,format=yuv444p,${retime},` +
-      `tpad=stop_mode=clone:stop_duration=1,scale=${W}:${H}:flags=lanczos,setsar=1,format=yuv420p[v]`;
+      `[0:v]format=gbrp,${look}scale=out_color_matrix=bt709:out_range=tv,format=yuv444p,` +
+      `${retime},tpad=stop_mode=clone:stop_duration=1,scale=${W}:${H}:flags=lanczos,setsar=1,format=yuv420p` +
+      `${grain}[v]`;
     const lastMs = ((N - 1) * 1000) / fps;
     const productTrack = shot.productBoxes
       .map((b, k) => ({
@@ -163,7 +179,7 @@ export function buildShotClipArgs(input: ShotClipArgsInput): ShotClipArgs {
     const graph =
       `[0:v]format=gbrp16le,${lut(TO_LINEAR)}[off];[1:v]format=gbrp16le,${lut(TO_LINEAR)}[on];` +
       `[off][on]xfade=transition=fade:duration=${fade}:offset=${offset},${lut(TO_SRGB)},format=gbrp,` +
-      `${persp},${toYuv709(W, H)}[v]`;
+      `${persp},${look}${toYuv709(W, H)}${grain}[v]`;
     return {
       args: [...still(shot.files[0]!), ...still(shot.files[1]!), "-filter_complex", graph, ...encode],
       frameCount: N,
@@ -172,7 +188,7 @@ export function buildShotClipArgs(input: ShotClipArgsInput): ShotClipArgs {
     };
   }
 
-  const graph = `[0:v]format=gbrp,${persp},${toYuv709(W, H)}[v]`;
+  const graph = `[0:v]format=gbrp,${persp},${look}${toYuv709(W, H)}${grain}[v]`;
   return {
     args: [...still(shot.files[0]!), "-filter_complex", graph, ...encode],
     frameCount: N,
@@ -190,7 +206,12 @@ export async function encodeShotClip(
   planShot: PlanShot,
   plan: Pick<ReelPlan, "fps" | "resolution">,
   outPath: string,
-  opts: { signal?: AbortSignal; crf?: number; x264Preset?: ShotClipArgsInput["x264Preset"] } = {},
+  opts: {
+    signal?: AbortSignal;
+    crf?: number;
+    x264Preset?: ShotClipArgsInput["x264Preset"];
+    look?: ShotClipArgsInput["look"];
+  } = {},
 ): Promise<ShotClip> {
   const t0 = Date.now();
   const built = buildShotClipArgs({
@@ -201,6 +222,7 @@ export async function encodeShotClip(
     width: plan.resolution.width,
     height: plan.resolution.height,
     outPath,
+    ...(opts.look ? { look: opts.look } : {}),
     ...(opts.crf !== undefined ? { crf: opts.crf } : {}),
     ...(opts.x264Preset ? { x264Preset: opts.x264Preset } : {}),
   });

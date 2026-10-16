@@ -418,7 +418,8 @@ def render_shot(studio: Studio, plan: ShotPlan, out_dir: str, samples: int) -> d
     os.makedirs(shot_dir)
     studio.clear_animation()
     technique = plan.technique
-    dim = RELIGHT_DIM if technique == "relight" else 1.0
+    env_dim = studio.env.relight_dim
+    dim = (RELIGHT_DIM if env_dim is None else env_dim) if technique == "relight" else 1.0
     studio.lights.activate(spec["lighting"], plan.fit.target, dim)
     studio.lights.static_roles_off(plan.accent_used, plan.sweep_used)
 

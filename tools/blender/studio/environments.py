@@ -35,6 +35,9 @@ class EnvSet:
     #: all studio light levels are multiplied by this (white sets bounce more light)
     light_mult: float
     objects: list[bpy.types.Object] = field(default_factory=list)
+    #: studio light level on relight plates (None = studio default): an evening set keeps the room dark until the
+    #: product's own light switches on
+    relight_dim: float | None = None
 
 
 # ------------------------------------------------------------------------------------------ materials -----
@@ -130,6 +133,59 @@ def concrete_material(name: str, base: str, size: float) -> bpy.types.Material:
     bsdf.inputs["Roughness"].default_value = 0.82
     nt.links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
     return mat
+
+
+def plaster_material(name: str, base: str, size: float) -> bpy.types.Material:
+    """Painted plaster: broad, faint tone mottling and a fine trowel texture (a flat colour reads as CG)."""
+    mat, nt, bsdf = _material(name)
+    coord = nt.nodes.new("ShaderNodeTexCoord")
+    broad = nt.nodes.new("ShaderNodeTexNoise")
+    broad.inputs["Scale"].default_value = 0.9 / size
+    broad.inputs["Detail"].default_value = 4.0
+    nt.links.new(coord.outputs["Object"], broad.inputs["Vector"])
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    r, g, b, _ = srgb(base)
+    ramp.color_ramp.elements[0].color = (r * 0.9, g * 0.89, b * 0.87, 1)
+    ramp.color_ramp.elements[1].color = (r * 1.04, g * 1.04, b * 1.03, 1)
+    nt.links.new(broad.outputs["Fac"], ramp.inputs["Fac"])
+    nt.links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
+    fine = nt.nodes.new("ShaderNodeTexNoise")
+    fine.inputs["Scale"].default_value = 22.0 / size
+    fine.inputs["Detail"].default_value = 8.0
+    fine.inputs["Roughness"].default_value = 0.7
+    nt.links.new(coord.outputs["Object"], fine.inputs["Vector"])
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.12
+    nt.links.new(fine.outputs["Fac"], bump.inputs["Height"])
+    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    bsdf.inputs["Roughness"].default_value = 0.9
+    bsdf.inputs["Specular IOR Level"].default_value = 0.25
+    return mat
+
+
+def _framed_print(size: float, back: float) -> list[bpy.types.Object]:
+    """A framed print on the back wall beside the product (out of focus behind it: a lived-in room)."""
+    w, h, t = 0.5 * size, 0.66 * size, 0.024 * size
+    x, z, y = 0.66 * size, 0.62 * size, back - 0.014 * size
+    frame = flat_material("PrintFrame", "#2A211B", 0.45, specular=0.4)
+    out = [box("PrintFrameTop", (w, 0.02 * size, t), (x, y, z + h / 2 - t / 2), frame),
+           box("PrintFrameBottom", (w, 0.02 * size, t), (x, y, z - h / 2 + t / 2), frame),
+           box("PrintFrameLeft", (t, 0.02 * size, h), (x - w / 2 + t / 2, y, z), frame),
+           box("PrintFrameRight", (t, 0.02 * size, h), (x + w / 2 - t / 2, y, z), frame)]
+    mat, nt, bsdf = _material("PrintArt")
+    coord = nt.nodes.new("ShaderNodeTexCoord")
+    wave = nt.nodes.new("ShaderNodeTexWave")
+    wave.inputs["Scale"].default_value = 0.8
+    wave.inputs["Distortion"].default_value = 3.0
+    nt.links.new(coord.outputs["Generated"], wave.inputs["Vector"])
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.elements[0].color = srgb("#B8805E")
+    ramp.color_ramp.elements[1].color = srgb("#D9CCB6")
+    nt.links.new(wave.outputs["Fac"], ramp.inputs["Fac"])
+    nt.links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
+    bsdf.inputs["Roughness"].default_value = 0.85
+    out.append(plane("PrintArt", (w - 2 * t, h - 2 * t), (x, y + 0.004 * size, z), (math.pi / 2, 0, 0), mat))
+    return out
 
 
 def brick_material(name: str, size: float) -> bpy.types.Material:
@@ -313,10 +369,12 @@ def build_environment(name: str, size: float, radius: float, reach: float, wall_
     elif name == "warm_living":
         floor_z = 0.0 if floor else -1.35 * size
         floor_mat = wood_material("Floor", "#5E3B22", "#8A5A36", size, planks=True)
-        wall_mat = flat_material("Wall", "#E7E3DC", 0.85, specular=0.3, bump_scale=0.05 * size)
+        # an evening living room: cool blue-hour ambient from above, the studio rig kept low so the product's own
+        # warm light is what lights the room
+        wall_mat = plaster_material("Wall", "#E4DCD0", size)
         side_mat = wall_mat
-        _world(srgb("#FFF4E6"), 0.25)
-        light_mult = 0.95
+        _world(srgb("#3A4D6E"), 1.1)
+        light_mult = 0.7
     elif name == "natural_daylight":
         floor_z = 0.0 if floor else -1.35 * size
         floor_mat = wood_material("Floor", "#B08A63", "#D2B48C", size, planks=True)
@@ -354,6 +412,7 @@ def build_environment(name: str, size: float, radius: float, reach: float, wall_
                         (0.0, back - 0.05 * size - slab_d / 2, (floor_z - 0.06 * size) / 2), top_mat))
         if name == "warm_living":
             objs += _books(size, radius)
+            objs += _framed_print(size, back)
     if name == "industrial":
         steel = flat_material("Pipe", "#1C1D1F", 0.35, specular=0.6)
         bm = bmesh.new()
@@ -366,7 +425,7 @@ def build_environment(name: str, size: float, radius: float, reach: float, wall_
         pipe.location = (0.0, back - 0.12 * size, 1.9 * size)
         objs.append(pipe)
     interior = (-side + 0.15 * size, side - 0.15 * size, front + 0.15 * size, back - 0.15 * size, top)
-    return EnvSet(name, interior, light_mult, objs)
+    return EnvSet(name, interior, light_mult, objs, relight_dim=0.18 if name == "warm_living" else None)
 
 
 def _books(size: float, radius: float) -> list[bpy.types.Object]:

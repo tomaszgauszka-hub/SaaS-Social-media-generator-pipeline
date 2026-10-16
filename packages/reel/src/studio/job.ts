@@ -18,6 +18,12 @@ import { plateMove, requiredOverscan, windowTravelX } from "./moves.ts";
  */
 
 /**
+ * Bumped when a set's look changes in tools/blender/studio/environments.py, so cached renders of the old set are
+ * not reused (other sets keep their cache keys). warm_living 2: evening living room (plaster, framed print,
+ * blue-hour ambient, a dark room until the product's own light switches on).
+ */
+const SET_REVISIONS: Partial<Record<string, number>> = { warm_living: 2 };
+/**
  * Render size per technique, as a share of the reel frame (mirrors tools/blender/studio/profiles.json `plateScale`
  * / `scale` — a unit test keeps them in sync). Measured on 4 vCPU, warm_living, 12 spp:
  *   FAST plate  1080·0.75 × 1920·0.75 × overscan 1.18 = 956×1699   ≈ 22–25 s
@@ -217,6 +223,7 @@ export function buildStudioJob(
       emissiveHints: [...(opts.emissiveHints ?? DEFAULT_EMISSIVE_HINTS)].slice(0, 12),
     },
     environment,
+    ...(SET_REVISIONS[environment] ? { setRevision: SET_REVISIONS[environment] } : {}),
     profile,
     camera: plan.camera,
     shots: shots.map((s) => studioShotSpec(s, profile)),

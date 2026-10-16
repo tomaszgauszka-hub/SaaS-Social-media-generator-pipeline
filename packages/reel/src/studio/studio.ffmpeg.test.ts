@@ -198,7 +198,7 @@ describe.skipIf(!hasFfmpeg)("shot clip encoding (real FFmpeg, synthetic studio o
       dir,
     };
     const out = path.join(dir, "relight.mp4");
-    await encodeShotClip(shot, planShot("silhouette_reveal", "relight", 2500), plan, out);
+    await encodeShotClip(shot, planShot("silhouette_reveal", "relight", 2500), plan, out, { look: "clean" });
     const frames = await greyFrames(out, dir);
     expect(frames).toHaveLength(75);
     const lin = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
@@ -237,7 +237,9 @@ describe.skipIf(!hasFfmpeg)("shot clip encoding (real FFmpeg, synthetic studio o
       dir,
     };
     const out = path.join(dir, "seq.mp4");
-    const clip = await encodeShotClip(shot, planShot("turntable", "sequence", 1000), plan, out);
+    const clip = await encodeShotClip(shot, planShot("turntable", "sequence", 1000), plan, out, {
+      look: "clean",
+    });
     const frames = await greyFrames(out, dir);
     expect(frames).toHaveLength(30);
     const xs = frames.map(
