@@ -215,6 +215,31 @@ export class RenderWorker3D {
     }
   }
 
+  /**
+   * The model file Unreal imports: the product's FBX / glTF export, made once by Blender (UE conventions, material
+   * report) and kept on the product's library record — an unchanged model is never exported or imported again.
+   */
+  private async unrealModelFile(product: Asset3D, work: string, signal?: AbortSignal): Promise<string> {
+    const existing =
+      (await this.o.library.localPath(product, "fbx")) ?? (await this.o.library.localPath(product, "glb"));
+    if (existing) return existing;
+    const src = product.outputFiles.find((f) => f.role === "source_model");
+    if (src && /\.(fbx|glb)$/i.test(src.key))
+      return (await this.o.library.localPath(product, "source_model"))!;
+    const blender = this.o.engines.blender;
+    if (!canExport(blender)) throw new FatalError("no Blender exporter to prepare the model for Unreal");
+    const file = product.generator ? null : await this.o.library.localPath(product, "source_model");
+    const exp = await blender.exportModel(product, file, work, { ...(signal ? { signal } : {}) });
+    const files: LibraryFile[] = [];
+    if (exp.fbx) files.push({ role: "fbx", localPath: exp.fbx, contentType: "application/octet-stream" });
+    if (exp.glb) files.push({ role: "glb", localPath: exp.glb, contentType: "model/gltf-binary" });
+    if (!files.length) throw new FatalError(`Blender exported no model for ${product.assetId}`);
+    const stored = await this.o.library.put(product, files);
+    this.log("render3d.model_export", { product: product.assetId, report: exp.report });
+    return ((await this.o.library.localPath(stored, "fbx")) ??
+      (await this.o.library.localPath(stored, "glb")))!;
+  }
+
   private async renderLocked(
     job: RenderJob3D,
     decision: RouteDecision,
@@ -228,7 +253,12 @@ export class RenderWorker3D {
     const caps = await this.capabilities();
     const engineCaps = engine.id === "unreal" ? caps.unreal : caps.blender;
     const sampler = new ResourceSampler(1000, engineCaps.gpu.available);
-    const productFile = product.generator ? null : await this.o.library.localPath(product, "source_model");
+    const productFile =
+      engine.id === "unreal"
+        ? await this.unrealModelFile(product, work, opts.signal)
+        : product.generator
+          ? null
+          : await this.o.library.localPath(product, "source_model");
     const t0 = Date.now();
     let failure: string | null = null;
     let out;
@@ -408,3 +438,15 @@ export class RenderWorker3D {
 }
 
 export const clipId = (recipeHash: string): string => `clip-${recipeHash.slice(0, 20)}`;
+
+/** Blender adapters can export a product model for Unreal (duck-typed: test engines need not). */
+interface ModelExporter {
+  exportModel(
+    product: Asset3D,
+    productFile: string | null,
+    workDir: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<{ fbx: string | null; glb: string | null; report: unknown; dimensionsM: number[] | null }>;
+}
+const canExport = (e: RenderEngine): e is RenderEngine & ModelExporter =>
+  typeof (e as Partial<ModelExporter>).exportModel === "function";

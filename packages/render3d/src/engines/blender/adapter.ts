@@ -13,7 +13,7 @@ import {
   type EngineRenderRequest,
   type RenderEngine,
 } from "../../contracts/engine.ts";
-import { isUnrealTemplate, type Recipe3D } from "../../contracts/recipe.ts";
+import { isUnrealTemplate, Recipe3D } from "../../contracts/recipe.ts";
 import { detectGpu } from "../gpu.ts";
 import { engineEnv, runEngineProcess } from "../proc.ts";
 
@@ -97,6 +97,8 @@ export function buildSceneJob(
     "jobId" | "recipe" | "product" | "productFile" | "device" | "renderer" | "threads"
   >,
   outDir: string,
+  /** export the product only (FBX / glTF for Unreal) — no frames are rendered */
+  exportOnly = false,
 ): Record<string, unknown> {
   const r: Recipe3D = req.recipe;
   if (isUnrealTemplate(r.template)) throw new FatalError(`${r.template} is an Unreal template`);
@@ -153,7 +155,7 @@ export function buildSceneJob(
     actions: r.actions,
     product,
     outputs: {
-      frames: true,
+      frames: !exportOnly,
       alpha: r.outputs.includes("alpha") || r.background.preset === "transparent",
       controlViews: r.outputs.includes("control_views"),
       blend: r.outputs.includes("blend"),
@@ -304,6 +306,50 @@ export class BlenderEngine implements RenderEngine {
       log.end();
     }
     return this.readResult(outDir);
+  }
+
+  /**
+   * Blender → Unreal: export the product model (assembled, rest pose, UE conventions — see
+   * tools/blender/scenes/export.py) without rendering frames. Returns the files and the material report.
+   */
+  async exportModel(
+    product: Asset3D,
+    productFile: string | null,
+    workDir: string,
+    opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+  ): Promise<{ fbx: string | null; glb: string | null; report: unknown; dimensionsM: number[] | null }> {
+    const caps = await this.probe();
+    if (!caps.available) throw new EngineUnavailableError("blender", caps.reason ?? "unavailable");
+    const outDir = path.join(workDir, "export-out");
+    fs.mkdirSync(outDir, { recursive: true });
+    const recipe = Recipe3D.parse({
+      template: "PRODUCT_HERO",
+      productAssetId: product.assetId,
+      durationSec: 0.5,
+      fps: 24,
+      resolution: [256, 456],
+      outputs: ["export_fbx", "export_glb"],
+    });
+    const jobFile = path.join(workDir, "export-job.json");
+    const job = buildSceneJob(
+      { jobId: `export-${product.assetId}`, recipe, product, productFile, device: "CPU", threads: 0 },
+      outDir,
+      true,
+    );
+    fs.writeFileSync(jobFile, JSON.stringify(job, null, 2));
+    const cmd = blenderCommand(this.opts, path.join(this.scenesDir, "run.py"), [jobFile]);
+    await runEngineProcess(cmd.command, cmd.args, {
+      env: engineEnv(),
+      timeoutMs: opts.timeoutMs ?? 15 * 60_000,
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+    const out = this.readResult(outDir);
+    return {
+      fbx: out.exports.fbx ?? null,
+      glb: out.exports.glb ?? null,
+      report: out.materialReport,
+      dimensionsM: out.exports.dimensionsM ?? null,
+    };
   }
 
   /** Validate result.json and resolve every file it names inside the output directory. */

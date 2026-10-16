@@ -38,3 +38,4 @@ tmp/
 # python bytecode (Blender studio)
 __pycache__/
 *.pyc
+dump.rdb

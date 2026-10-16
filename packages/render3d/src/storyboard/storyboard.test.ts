@@ -118,7 +118,7 @@ describe("storyboard ⇄ 3D clips", () => {
     });
     expect(plan.locale).toBe("pl-PL");
     expect(plan.media["clip-s03"]?.url).toBe("http://127.0.0.1:1/clip-s03.mp4");
-    expect(issues.filter((i) => i.severity === "error")).toEqual([]);
+    expect(issues.filter((i) => i.severity === "blocker")).toEqual([]);
   });
 
   it("maps a callout to the nearest anchor of the old media", () => {
