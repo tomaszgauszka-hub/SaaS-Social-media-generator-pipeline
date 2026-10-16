@@ -33,6 +33,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:POWERSHELL_TELEMETRY_OPTOUT = "1"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $Venv = Join-Path $Root ".tools\mcp-venv"
 $Req = Join-Path $Root "tools\mcp\requirements-blender-mcp.txt"
@@ -82,10 +83,16 @@ Ok "add-on matches the reviewed release ($expected)"
 # ------------------------------------------------------------------ 3. Blender + add-on
 Step "Blender"
 if (-not $BlenderExe) {
-  $searchRoot = if ($OnWindows) { Join-Path $env:ProgramFiles "Blender Foundation" } else { "/nonexistent" }
-  $cands = Get-ChildItem -Path $searchRoot -Filter "blender.exe" -Recurse -ErrorAction SilentlyContinue |
-    Sort-Object { [version](($_.Directory.Name -replace '[^0-9.]', '') + '.0') } -Descending
-  if ($cands) { $BlenderExe = $cands[0].FullName }
+  # only an existing install folder is searched (one level: "Blender 4.3\blender.exe") — a missing path must never
+  # make Get-ChildItem fall back to recursing the current directory
+  $searchRoot = if ($OnWindows -and $env:ProgramFiles) { Join-Path $env:ProgramFiles "Blender Foundation" } else { $null }
+  if ($searchRoot -and (Test-Path -LiteralPath $searchRoot -PathType Container)) {
+    $cands = Get-ChildItem -LiteralPath $searchRoot -Directory -ErrorAction SilentlyContinue |
+      ForEach-Object { Join-Path $_.FullName "blender.exe" } |
+      Where-Object { Test-Path -LiteralPath $_ } |
+      Sort-Object { [version](((Split-Path (Split-Path $_) -Leaf) -replace '[^0-9.]', '') + '.0') } -Descending
+    if ($cands) { $BlenderExe = @($cands)[0] }
+  }
 }
 if (-not $BlenderExe -or -not (Test-Path $BlenderExe)) {
   Warn "Blender not found — pass -BlenderExe. The render worker can still use a bpy venv (BLENDER_PYTHON)."
