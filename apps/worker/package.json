@@ -25,6 +25,7 @@
     "@cre/creative": "workspace:*",
     "@cre/motion": "workspace:*",
     "@cre/reel": "workspace:*",
-    "@cre/media": "workspace:*"
+    "@cre/media": "workspace:*",
+    "@cre/render3d": "workspace:*"
   }
 }

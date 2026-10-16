@@ -43,6 +43,19 @@ export class TimeoutError extends RetryableError {
   }
 }
 
+/**
+ * The job cannot run *yet* (a render station is switched off, an engine is closed, not enough free memory): it is
+ * parked and resumed after `delayMs` without using up an attempt — the job's state stays safe and resumable.
+ */
+export class DeferredError extends RetryableError {
+  readonly delayMs: number;
+
+  constructor(message: string, delayMs = 10 * 60_000, opts: AppErrorOptions = {}) {
+    super(message, { code: "DEFERRED", ...opts });
+    this.delayMs = delayMs;
+  }
+}
+
 export class NotFoundError extends FatalError {
   constructor(entity: string, id: string) {
     super(`${entity} not found: ${id}`, { code: "NOT_FOUND", details: { entity, id } });

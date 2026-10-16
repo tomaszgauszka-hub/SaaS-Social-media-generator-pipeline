@@ -125,6 +125,31 @@ export const EnvSchema = z.object({
   /** compute price of the render host (USD per wall-clock hour) — cost per reel / payback reports */
   REEL_COMPUTE_USD_PER_HOUR: z.coerce.number().min(0).default(0.15),
   REEL_OUTPUT_DIR: z.string().default(".data/reels"),
+
+  /** 3D production (packages/render3d): library records, scratch renders, locks */
+  RENDER3D_DATA_DIR: z.string().default(".data/render3d"),
+  /** heavy renders (Blender + Unreal together) at once on one host */
+  RENDER3D_MAX_CONCURRENT: z.coerce.number().int().min(1).max(8).default(1),
+  /** CPU | GPU | AUTO (best GPU backend, CPU fallback) */
+  RENDER3D_DEVICE: z.enum(["CPU", "GPU", "AUTO"]).default("AUTO"),
+  /** the render station is offline → use the 2D pipeline instead of waiting for it */
+  RENDER3D_SKIP_WHEN_OFFLINE: bool(false),
+  /** predicted clip value (0–1) below which 3D is not used */
+  RENDER3D_MIN_VALUE: z.coerce.number().min(0).max(1).default(0),
+  /** production renders only after the owner approved the preview of the same recipe */
+  RENDER3D_REQUIRE_APPROVED_PREVIEW: bool(true),
+  /** local cost model of the render host (see packages/render3d/src/cost/local.ts) */
+  RENDER3D_CPU_POWER_W: z.coerce.number().min(1).optional(),
+  RENDER3D_GPU_POWER_W: z.coerce.number().min(1).optional(),
+  RENDER3D_ENERGY_USD_PER_KWH: z.coerce.number().min(0).optional(),
+  RENDER3D_HARDWARE_USD: z.coerce.number().min(0).optional(),
+  RENDER3D_HARDWARE_LIFETIME_HOURS: z.coerce.number().min(1).optional(),
+  RENDER3D_EXTRA_USD_PER_HOUR: z.coerce.number().min(0).optional(),
+  /** Unreal Engine: UnrealEditor-Cmd executable and the dedicated render project (never a game project) */
+  UE_EDITOR_CMD: z.string().optional(),
+  UE_PROJECT: z.string().optional(),
+  UE_RENDER_TIMEOUT_MS: z.coerce.number().int().min(60_000).optional(),
+  UE_REMOTE_EXEC_PORT: z.coerce.number().int().min(1024).max(65535).optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

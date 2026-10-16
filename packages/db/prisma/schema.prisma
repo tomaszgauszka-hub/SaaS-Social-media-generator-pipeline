@@ -1783,3 +1783,50 @@ model ProductProfileCache {
 
   @@unique([productKey, sourceHash, analyzerVersion])
 }
+
+/// 3D asset library (packages/render3d): metadata only — the files live in the Storage provider (record.outputFiles
+/// holds their keys and sha256). Product models, scenes, materials and rendered clips with provenance and licence.
+model Render3DAsset {
+  id                String   @id
+  workspaceId       String?
+  assetType         String
+  productId         String?
+  brandId           String?
+  category          String
+  source            String
+  license           String
+  fidelity          String
+  isDemoOnly        Boolean
+  isProductVerified Boolean
+  structureVerified Boolean  @default(false)
+  engine            String
+  engineVersion     String?
+  version           Int      @default(1)
+  /// cache key: hash of the complete render recipe + engine identity
+  recipeHash        String?
+  /// recipe + product identity without the engine version
+  visualKey         String?
+  approvalStatus    String   @default("PENDING")
+  /// the full Asset3D record (validated by packages/render3d contracts on every read)
+  record            Json
+  /// clips: their row in Asset (VIDEO_CLIP, origin RENDERED) — the app's existing asset system
+  assetRowId        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([recipeHash])
+  @@index([visualKey])
+  @@index([productId, assetType])
+  @@index([approvalStatus])
+}
+
+/// Heartbeat of a local render station (worker with Blender / Unreal): the panel and the 3D router read it to
+/// tell "station offline" apart from a failure.
+model RenderStation {
+  id           String   @id
+  lastSeenAt   DateTime
+  capabilities Json
+  activeJobs   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

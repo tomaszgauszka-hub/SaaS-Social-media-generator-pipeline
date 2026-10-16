@@ -15,6 +15,7 @@ import { maintenanceTickHandler } from "./steps/maintenance.ts";
 import { publishHandler } from "./steps/publish.ts";
 import { qaHandler } from "./steps/qa.ts";
 import { reelProduceHandler } from "./steps/reel.ts";
+import { render3dProduceHandler } from "./steps/render3d.ts";
 import { renderHandler } from "./steps/render.ts";
 import { researchHandler } from "./steps/research.ts";
 import { scriptHandler } from "./steps/script.ts";
@@ -36,6 +37,7 @@ export const HANDLERS: Record<JobType, JobHandler> = {
   "pipeline.render": renderHandler,
   "pipeline.qa": qaHandler,
   "reel.produce": reelProduceHandler,
+  "render3d.produce": render3dProduceHandler,
   "publish.publication": publishHandler,
   "analytics.collect": analyticsCollectHandler,
   "analytics.profile": analyticsProfileHandler,

@@ -22,3 +22,5 @@ export { normalizeScript, type StoredScript } from "./steps/script.ts";
 export * from "./outbox.ts";
 export * from "./reel-store.ts";
 export { enqueueReelProduction, reelProduceHandler, ReelProducePayload } from "./steps/reel.ts";
+export * from "./render3d-library.ts";
+export { enqueueRender3d, render3dProduceHandler, Render3DProducePayload } from "./steps/render3d.ts";

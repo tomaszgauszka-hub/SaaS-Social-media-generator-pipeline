@@ -11,6 +11,7 @@ import { decimalFieldToMicros, type ContentStatus, type GenerationJob, type Pris
 import {
   backoffDelay,
   BudgetBlockedError,
+  DeferredError,
   classifyError,
   errorMessage,
   FatalError,
@@ -205,6 +206,23 @@ async function handleFailure(
   }
 
   const aborted = opts.signal?.aborted ?? false;
+  if (err instanceof DeferredError) {
+    // not the job's fault (render station offline, engine closed): park it, give the attempt back, resume later
+    const runAt = new Date(now.getTime() + err.delayMs);
+    await ctx.prisma.generationJob.update({
+      where: { id: job.id },
+      data: { status: "RETRYING", runAt, lastError: message, errorClass: cls, attempts: { decrement: 1 } },
+    });
+    await recordJobEvent(ctx.prisma, {
+      jobId: job.id,
+      runId: job.runId,
+      type: "RETRY",
+      message: `deferred: ${message}`,
+      data: { deferred: true, delayMs: err.delayMs, attempt: job.attempts, durationMs },
+    });
+    log.warn({ event: LogEvent.RETRY, err: message, delayMs: err.delayMs }, `${job.type} deferred`);
+    return { status: "retrying", error: message, runAt };
+  }
   if ((cls === "retryable" && job.attempts < job.maxAttempts) || aborted) {
     const delay = aborted ? 5_000 : Math.max(1_000, backoffDelay(job.attempts, 2_000, 120_000));
     const runAt = new Date(now.getTime() + delay);

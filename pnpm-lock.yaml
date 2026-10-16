@@ -144,6 +144,9 @@ importers:
       '@cre/reel':
         specifier: workspace:*
         version: link:../../packages/reel
+      '@cre/render3d':
+        specifier: workspace:*
+        version: link:../../packages/render3d
       '@cre/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -327,6 +330,9 @@ importers:
       '@cre/reel':
         specifier: workspace:*
         version: link:../reel
+      '@cre/render3d':
+        specifier: workspace:*
+        version: link:../render3d
       '@cre/shared':
         specifier: workspace:*
         version: link:../shared
@@ -403,6 +409,27 @@ importers:
       '@types/fontkit':
         specifier: ^2.0.9
         version: 2.0.9
+
+  packages/render3d:
+    dependencies:
+      '@cre/config':
+        specifier: workspace:*
+        version: link:../config
+      '@cre/creative':
+        specifier: workspace:*
+        version: link:../creative
+      '@cre/providers':
+        specifier: workspace:*
+        version: link:../providers
+      '@cre/reel':
+        specifier: workspace:*
+        version: link:../reel
+      '@cre/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/shared:
     dependencies:

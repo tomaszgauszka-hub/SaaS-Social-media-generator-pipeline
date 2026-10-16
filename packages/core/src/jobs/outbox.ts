@@ -23,6 +23,7 @@ export type JobType =
   | "pipeline.render"
   | "pipeline.qa"
   | "reel.produce"
+  | "render3d.produce"
   | "publish.publication"
   | "analytics.collect"
   | "analytics.profile"

@@ -1,0 +1,22 @@
+{
+  "name": "@cre/render3d",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local 3D production: recipe contracts, 3D render router, asset library + recipe-hash cache, Blender and Unreal Engine adapters, render worker, clip QA, local cost model, storyboard integration, thin MCP orchestration server",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contracts": "./src/contracts/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@cre/config": "workspace:*",
+    "@cre/creative": "workspace:*",
+    "@cre/providers": "workspace:*",
+    "@cre/reel": "workspace:*",
+    "@cre/shared": "workspace:*",
+    "zod": "4.6.5"
+  }
+}

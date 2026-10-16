@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "blender": {
+      "command": "node",
+      "args": ["tools/mcp/launch.mjs", "blender"]
+    },
+    "render3d": {
+      "command": "node",
+      "args": ["tools/mcp/launch.mjs", "render3d"]
+    }
+  }
+}

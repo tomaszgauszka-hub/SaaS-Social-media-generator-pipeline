@@ -186,6 +186,41 @@ export type MediaProvenance = z.infer<typeof MediaProvenance>;
 export const ParamValue = z.union([z.number(), z.string(), z.boolean()]);
 export type ParamValue = z.infer<typeof ParamValue>;
 
+/**
+ * 3D material types (packages/render3d): rendered clips of a product model. Optional on media and beats —
+ * storyboards without 3D are unchanged.
+ */
+export const Material3DType = z.enum([
+  "3D_PRODUCT_HERO",
+  "3D_TURNTABLE",
+  "3D_MACRO",
+  "3D_EXPLODED_VIEW",
+  "3D_ASSEMBLY",
+  "3D_LIFESTYLE",
+  "3D_TECHNICAL",
+  "3D_CINEMATIC",
+]);
+export type Material3DType = z.infer<typeof Material3DType>;
+
+/** Where a 3D clip came from: the library record, its cache key and how faithful its model is. */
+export const Render3DRef = z.object({
+  assetId: z.string().min(1),
+  materialType: Material3DType,
+  recipeHash: z.string().min(1),
+  engine: z.enum(["blender", "unreal"]),
+  fidelity: z.enum([
+    "VERIFIED_MANUFACTURER",
+    "TECHNICAL_RECONSTRUCTION",
+    "APPROXIMATE_VISUALIZATION",
+    "FICTIONAL_DEMO",
+  ]),
+  /** product boxes / anchor tracks per frame (normalised) for overlays that follow parts */
+  tracksKey: z.string().optional(),
+  /** an illustrative simulation (technical visualisation) — never presented as a physical test */
+  illustrative: z.boolean().default(false),
+});
+export type Render3DRef = z.infer<typeof Render3DRef>;
+
 export const MediaRef = z.object({
   id: z.string().min(1),
   kind: MediaKind,
@@ -208,6 +243,8 @@ export const MediaRef = z.object({
   /** the product is recognisably visible in this media (always true for product / product_detail roles) */
   showsProduct: z.boolean().default(false),
   description: z.string().default(""),
+  /** set when this media is a rendered 3D clip (packages/render3d) */
+  render3d: Render3DRef.optional(),
 });
 export type MediaRef = z.infer<typeof MediaRef>;
 
@@ -575,6 +612,21 @@ export const VisualBeat = z.object({
     .default({ zoom: [1, 1], x: [0, 0], y: [0, 0] }),
   /** director's reasoning — kept for debugging and QA explanations */
   note: z.string().default(""),
+  /**
+   * Request for a 3D clip for this beat (resolved by the 3D render router before rendering): the clip replaces
+   * the beat's primary media; text, prices and CTAs stay in this beat's text slots (never baked into 3D).
+   */
+  asset3d: z
+    .object({
+      materialType: Material3DType,
+      /** part of the product to focus on (macro / technical) */
+      focus: z
+        .string()
+        .regex(/^[a-z][a-z0-9_]{0,40}$/)
+        .optional(),
+      durationMs: z.number().int().min(500).max(20_000).optional(),
+    })
+    .optional(),
 });
 export type VisualBeat = z.infer<typeof VisualBeat>;
 

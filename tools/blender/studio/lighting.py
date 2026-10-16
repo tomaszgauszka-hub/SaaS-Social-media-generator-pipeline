@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import bpy
 from mathutils import Matrix
 
+import compat
 import framing
 
 NEUTRAL_K = 6500.0
@@ -134,8 +135,7 @@ class Lighting:
         rig = Rig(preset)
         for k, spec in enumerate(RIGS[preset] + EXTRAS):
             data = bpy.data.lights.new(f"{preset}.{spec.role}.{k}", spec.kind)
-            data.use_temperature = True
-            data.temperature = spec.kelvin
+            compat.set_light_temperature(data, spec.kelvin)
             data.use_shadow = True
             if spec.kind == "AREA":
                 data.shape = "RECTANGLE"
@@ -209,8 +209,7 @@ def product_light(pivot: bpy.types.Object, position: framing.Vec, height: float)
     """A warm point light inside the product (a lamp's bulb), parented to the product so it moves with it.
     Returns the object and its energy at level 1 (W)."""
     data = bpy.data.lights.new("ProductLight", "POINT")
-    data.use_temperature = True
-    data.temperature = 2700.0
+    compat.set_light_temperature(data, 2700.0)
     data.shadow_soft_size = max(0.004, 0.03 * height)
     data.use_shadow = True
     obj = bpy.data.objects.new("ProductLight", data)
