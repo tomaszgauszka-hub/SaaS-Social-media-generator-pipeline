@@ -27,6 +27,14 @@ oglądania w przeglądarce). System renderuje 1080×1920.
 - **Koszt i zwrot liczone per rolka.** Dostajesz koszt API, koszt czasu maszyny i liczbę sprzedaży potrzebną do
   zwrotu.
 
+## Rolka do oceny (wersja „jak do sprzedaży”)
+
+[Lampa orzech + mosiądz — PL, TikTok, 1080×1920](rolki/00_rolka-do-oceny_lampa-orzech-mosiadz_PL_TikTok_1080p.mp4) ·
+[klatki](klatki/00_rolka-do-oceny_lampa-orzech-mosiadz_PL_TikTok.jpg). Pełna jakość studia (64 próbki, 1080p),
+wieczorna scena (tynk, obrazek, niebieski zmierzch → ciepłe światło lampy), wygląd kamery (poświata, winieta,
+ziarno), poprawione napisy. Lektor i muzyka lokalne (bez płatnych API). Render: 2 h 41 min CPU, koszt maszyny
+≈ $0,40; QA 100.
+
 ## Przykładowe rolki
 
 | # | Rolka | Kadry |
